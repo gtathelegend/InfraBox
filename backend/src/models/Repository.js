@@ -12,10 +12,20 @@ const RepositorySchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    repoUrl: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     provider: {
       type: String,
       enum: ["github", "gitlab", "bitbucket", "other"],
       default: "github",
+    },
+    defaultBranch: {
+      type: String,
+      trim: true,
+      default: "main",
     },
     workspaceId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -23,9 +33,27 @@ const RepositorySchema = new mongoose.Schema(
       required: [true, "workspaceId is required"],
       index: true,
     },
+    ownerId: {
+      type: String,
+      default: "",
+      index: true,
+    },
     createdBy: {
       type: String,
       required: [true, "createdBy is required"],
+    },
+    branches: {
+      type: [String],
+      default: [],
+    },
+    ciConfigDetected: {
+      type: [
+        {
+          type: String,
+          enum: ["github_actions", "gitlab_ci", "jenkins", "circleci"],
+        },
+      ],
+      default: [],
     },
   },
   {
@@ -44,5 +72,7 @@ const RepositorySchema = new mongoose.Schema(
 
 // Compound index for fast workspace-scoped queries
 RepositorySchema.index({ workspaceId: 1, name: 1 });
+RepositorySchema.index({ workspaceId: 1, provider: 1 });
+RepositorySchema.index({ workspaceId: 1, repoUrl: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model("Repository", RepositorySchema);

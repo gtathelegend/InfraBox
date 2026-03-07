@@ -6,6 +6,8 @@ const cors = require("cors");
 const workspaceRoutes = require("./src/routes/workspaceRoutes");
 const userRoutes = require("./src/routes/userRoutes");
 const resourceRoutes = require("./src/routes/resourceRoutes");
+const repoConnectorRoutes = require("./src/routes/repoConnectorRoutes");
+const cloudIntegrationRoutes = require("./src/routes/cloudIntegrationRoutes");
 
 const app = express();
 
@@ -17,6 +19,8 @@ app.use(express.json());
 app.use("/api/workspaces", workspaceRoutes);
 app.use("/api/me", userRoutes);
 app.use("/api/workspaces/:workspaceId", resourceRoutes);
+app.use("/api/repos", repoConnectorRoutes);
+app.use("/api/cloud", cloudIntegrationRoutes);
 
 // ─── Health Check ───────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
