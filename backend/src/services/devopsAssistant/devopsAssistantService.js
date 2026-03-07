@@ -1,12 +1,11 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { Configuration, OpenAIApi } = require("openai");
-const PipelineMetrics = require("../../models/PipelineMetrics");
-const TechnicalDebtReport = require("../../models/TechnicalDebtReport");
-const FailurePredictionResult = require("../../models/FailurePredictionResult");
-const CostPrediction = require("../../models/CostPrediction");
-const DeploymentConfidenceScore = require("../../models/DeploymentConfidenceScore");
-const SimulationResult = require("../../models/SimulationResult");
-const ResourceMetrics = require("../../models/ResourceMetrics");
+const {
+  routeQuery,
+  synthesizeContext,
+  extractKeyMetrics,
+  buildInsightSummary,
+} = require("./devopsQueryRoutingService");
 
 const openaiApiKey = process.env.OPENAI_API_KEY;
 
@@ -17,11 +16,6 @@ if (openaiApiKey) {
     apiKey: openaiApiKey,
   });
   openai = new OpenAIApi(configuration);
-}
-
-function normalizeNumber(value, fallback = 0) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 // Intent detection patterns
@@ -66,175 +60,32 @@ function detectIntent(query) {
   return "general_infrastructure";
 }
 
-async function retrieveDeploymentFailureData(workspaceId) {
-  const data = {};
+function buildSystemPrompt(intent, knowledge, contextSummary, keyMetrics, insightSummary) {
+  let systemPrompt = `You are a DevOps expert assistant for the Infrabox platform. You provide clear, actionable insights about infrastructure, deployments, pipelines, and cloud systems.
 
-  try {
-    const failurePredictions = await FailurePredictionResult.find({ workspaceId })
-      .sort({ timestamp: -1 })
-      .limit(5)
-      .lean();
+Your approach:
+1. Be concise but thorough
+2. Provide data-driven analysis
+3. Include metrics with actual values
+4. Suggest specific, actionable recommendations
+5. Highlight risks early and clearly
 
-    data.recentFailures = failurePredictions.map((f) => ({
-      repositoryId: f.repositoryId,
-      failureProbability: normalizeNumber(f.failureProbability),
-      predictedFailures: f.predictedFailures || [],
-      timestamp: f.timestamp,
-    }));
-  } catch (err) {
-    console.warn("Failed to retrieve failure predictions:", err.message);
-  }
+CONTEXT SUMMARY:
+${contextSummary}
 
-  try {
-    const deploymentScores = await DeploymentConfidenceScore.find({ workspaceId })
-      .sort({ evaluatedAt: -1 })
-      .limit(5)
-      .lean();
+KEY METRICS:
+${JSON.stringify(keyMetrics, null, 2)}
 
-    data.recentDeploymentScores = deploymentScores.map((s) => ({
-      repositoryId: s.repositoryId,
-      confidenceScore: s.confidenceScore,
-      riskLevel: s.riskLevel,
-      recommendations: s.recommendations,
-    }));
-  } catch (err) {
-    console.warn("Failed to retrieve deployment scores:", err.message);
-  }
+INSIGHT SUMMARY:
+${JSON.stringify(insightSummary, null, 2)}
 
-  return data;
-}
-
-async function retrievePerformanceData(workspaceId) {
-  const data = {};
-
-  try {
-    const simulations = await SimulationResult.find({ workspaceId })
-      .sort({ simulatedAt: -1 })
-      .limit(5)
-      .lean();
-
-    data.recentSimulations = simulations.map((s) => ({
-      repositoryId: s.repositoryId,
-      averageLatency: normalizeNumber(s.metrics?.averageLatency),
-      peakMemory: normalizeNumber(s.metrics?.peakMemory),
-      successRate: normalizeNumber(s.metrics?.successRate),
-    }));
-  } catch (err) {
-    console.warn("Failed to retrieve simulation results:", err.message);
-  }
-
-  try {
-    const metrics = await ResourceMetrics.find({ workspaceId })
-      .sort({ timestamp: -1 })
-      .limit(10)
-      .lean();
-
-    data.recentMetrics = metrics.map((m) => ({
-      cpuUsage: normalizeNumber(m.cpuUsage),
-      memoryUsage: normalizeNumber(m.memoryUsage),
-      latency: normalizeNumber(m.latency),
-      errorRate: normalizeNumber(m.errorRate),
-    }));
-  } catch (err) {
-    console.warn("Failed to retrieve resource metrics:", err.message);
-  }
-
-  return data;
-}
-
-async function retrieveCostData(workspaceId) {
-  const data = {};
-
-  try {
-    const costPredictions = await CostPrediction.find({ workspaceId })
-      .sort({ generatedAt: -1 })
-      .limit(5)
-      .lean();
-
-    data.costPredictions = costPredictions.map((c) => ({
-      repositoryId: c.repositoryId,
-      monthlyCostEstimate: normalizeNumber(c.monthlyCostEstimate),
-      spikeCostEstimate: normalizeNumber(c.spikeCostEstimate),
-      provider: c.provider,
-    }));
-  } catch (err) {
-    console.warn("Failed to retrieve cost predictions:", err.message);
-  }
-
-  return data;
-}
-
-async function retrievePipelineData(workspaceId) {
-  const data = {};
-
-  try {
-    const pipelineMetrics = await PipelineMetrics.find({ workspaceId })
-      .sort({ timestamp: -1 })
-      .limit(5)
-      .lean();
-
-    data.pipelineMetrics = pipelineMetrics.map((p) => ({
-      repositoryId: p.repositoryId,
-      successRate: normalizeNumber(p.successRate),
-      averageBuildTime: normalizeNumber(p.averageBuildTime),
-      averageTestTime: normalizeNumber(p.averageTestTime),
-      failureReasons: p.failureReasons || [],
-    }));
-  } catch (err) {
-    console.warn("Failed to retrieve pipeline metrics:", err.message);
-  }
-
-  try {
-    const debtReports = await TechnicalDebtReport.find({ workspaceId })
-      .sort({ timestamp: -1 })
-      .limit(3)
-      .lean();
-
-    data.technicalDebt = debtReports.map((d) => ({
-      repositoryId: d.repositoryId,
-      totalSecurityIssues: d.totalSecurityIssues,
-      criticalIssues: d.criticalIssues,
-      complexity: d.averageComplexity,
-    }));
-  } catch (err) {
-    console.warn("Failed to retrieve technical debt:", err.message);
-  }
-
-  return data;
-}
-
-async function retrieveSecurityData(workspaceId) {
-  const data = {};
-
-  try {
-    const debtReports = await TechnicalDebtReport.find({ workspaceId })
-      .sort({ timestamp: -1 })
-      .limit(5)
-      .lean();
-
-    data.securityIssues = debtReports.map((d) => ({
-      repositoryId: d.repositoryId,
-      totalSecurityIssues: d.totalSecurityIssues,
-      criticalIssues: d.criticalIssues,
-      highIssues: d.highIssues,
-      issuesPerModule: d.issuesPerModule || [],
-    }));
-  } catch (err) {
-    console.warn("Failed to retrieve security data:", err.message);
-  }
-
-  return data;
-}
-
-function buildSystemPrompt(intent, supportingData) {
-  let systemPrompt = `You are a DevOps expert assistant for the Infrabox platform. You provide clear, actionable insights about infrastructure, deployments, pipelines, and cloud systems. 
-
-You have access to real-time system data and should provide specific, data-driven recommendations. Be concise but thorough. When referencing metrics, include actual values and thresholds.
-
-Current system data context:
-${JSON.stringify(supportingData, null, 2)}
+DETAILED SYSTEM DATA:
+${JSON.stringify(knowledge, null, 2)}
 
 Intent detected: ${intent}
+
+For this query, focus on:
+${getIntentGuidance(intent)}
 
 Provide your response in a structured format when possible, with:
 1. Direct answer to the query
@@ -243,6 +94,25 @@ Provide your response in a structured format when possible, with:
 4. Risk assessment if relevant`;
 
   return systemPrompt;
+}
+
+function getIntentGuidance(intent) {
+  const guidance = {
+    deployment_failures:
+      "- Root cause of recent deployment failures\n- Services affected\n- Risk mitigation steps",
+    performance:
+      "- Performance bottlenecks\n- Latency and throughput issues\n- Scaling recommendations",
+    cost_optimization:
+      "- Cost drivers and waste\n- Optimization opportunities\n- Estimated savings",
+    pipeline_analysis:
+      "- Pipeline health and bottlenecks\n- Stage performance\n- Test and build optimization",
+    security:
+      "- Security vulnerabilities\n- Risk assessment\n- Remediation steps",
+    general_infrastructure:
+      "- Overall system health\n- Key metrics\n- Areas needing attention",
+  };
+
+  return guidance[intent] || guidance.general_infrastructure;
 }
 
 async function queryOpenAI(userQuery, systemPrompt) {
@@ -287,46 +157,32 @@ async function processAssistantQuery({
   // Step 1: Detect intent
   const detectedIntent = detectIntent(query);
 
-  // Step 2: Retrieve supporting data based on intent
-  let supportingData = {};
-  const dataSources = [];
+  // Step 2: Route query and retrieve relevant data using intelligent routing
+  const knowledge = await routeQuery({
+    workspaceId,
+    detectedIntent,
+  });
 
-  if (detectedIntent === "deployment_failures") {
-    supportingData = await retrieveDeploymentFailureData(workspaceId);
-    dataSources.push("deployment_failures", "predictions");
-  } else if (detectedIntent === "performance") {
-    supportingData = await retrievePerformanceData(workspaceId);
-    dataSources.push("simulations", "metrics");
-  } else if (detectedIntent === "cost_optimization") {
-    supportingData = await retrieveCostData(workspaceId);
-    dataSources.push("cost_predictions");
-  } else if (detectedIntent === "pipeline_analysis") {
-    supportingData = await retrievePipelineData(workspaceId);
-    dataSources.push("pipeline_metrics", "technical_debt");
-  } else if (detectedIntent === "security") {
-    supportingData = await retrieveSecurityData(workspaceId);
-    dataSources.push("security_scans", "technical_debt");
-  } else {
-    supportingData = {
-      ...(await retrieveDeploymentFailureData(workspaceId)),
-      ...(await retrievePerformanceData(workspaceId)),
-      ...(await retrieveCostData(workspaceId)),
-    };
-    dataSources.push("general_data");
-  }
+  // Step 3: Synthesize context and extract key metrics for AI prompt
+  const contextSummary = synthesizeContext(knowledge);
+  const keyMetrics = extractKeyMetrics(knowledge);
+  const insightSummary = buildInsightSummary(knowledge);
 
-  // Step 3: Build system prompt
-  const systemPrompt = buildSystemPrompt(detectedIntent, supportingData);
+  // Step 4: Build enhanced system prompt with aggregated knowledge
+  const enhancedPrompt = buildSystemPrompt(detectedIntent, knowledge, contextSummary, keyMetrics, insightSummary);
 
-  // Step 4: Query OpenAI
-  const answer = await queryOpenAI(query, systemPrompt);
+  // Step 5: Query OpenAI
+  const answer = await queryOpenAI(query, enhancedPrompt);
 
-  // Step 5: Return response
+  // Step 6: Return comprehensive response
   return {
     answer,
     detectedIntent,
-    supportingDataSources: dataSources,
-    supportingData,
+    supportingDataSources: knowledge.dataSources || [],
+    supportingData: knowledge,
+    contextSummary,
+    keyMetrics,
+    insightSummary,
   };
 }
 
