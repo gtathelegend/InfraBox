@@ -1,11 +1,41 @@
 import { Bot, SendHorizonal, User } from "lucide-react";
+import * as React from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { RippleButton } from "@/components/ui/ripple-button";
-import { assistantMessages } from "@/lib/infrabox-data";
+import { useChat } from "@/hooks/use-chat";
+
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
 
 export default function AssistantPage() {
+  const [text, setText] = React.useState("");
+  const [messages, setMessages] = React.useState<ChatMessage[]>([]);
+  const chat = useChat();
+
+  const sendMessage = async () => {
+    if (!text.trim() || chat.isPending) return;
+    const userMessage = text.trim();
+    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    setText("");
+
+    try {
+      const data = await chat.mutateAsync(userMessage);
+      setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "I could not reach the assistant service. Please try again.",
+        },
+      ]);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
@@ -20,7 +50,13 @@ export default function AssistantPage() {
           <CardTitle className="text-lg">Assistant Chat</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 p-5">
-          {assistantMessages.map((message, index) => (
+          {messages.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+              Ask a question to start the conversation.
+            </div>
+          ) : null}
+
+          {messages.map((message, index) => (
             <div
               key={`${message.role}-${index}`}
               className={`flex gap-3 ${
@@ -40,11 +76,6 @@ export default function AssistantPage() {
                 }`}
               >
                 <p>{message.content}</p>
-                {"code" in message && message.code ? (
-                  <pre className="mt-3 overflow-x-auto rounded-xl bg-slate-950 p-3 text-xs text-slate-100">
-                    <code>{message.code}</code>
-                  </pre>
-                ) : null}
               </div>
               {message.role === "user" ? (
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-700">
@@ -66,10 +97,22 @@ export default function AssistantPage() {
           </div>
 
           <div className="flex gap-2">
-            <Input placeholder="Ask Infrabox assistant..." className="h-11" />
-            <RippleButton className="h-11 bg-primary text-white hover:bg-primary/90">
+            <Input
+              placeholder="Ask Infrabox assistant..."
+              className="h-11"
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void sendMessage();
+              }}
+            />
+            <RippleButton
+              className="h-11 bg-primary text-white hover:bg-primary/90"
+              onClick={() => void sendMessage()}
+              disabled={!text.trim() || chat.isPending}
+            >
               <SendHorizonal className="h-4 w-4" />
-              Send
+              {chat.isPending ? "Sending..." : "Send"}
             </RippleButton>
           </div>
         </CardContent>

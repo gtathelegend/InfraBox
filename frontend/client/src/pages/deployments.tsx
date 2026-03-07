@@ -1,10 +1,28 @@
 import { CheckCircle2, ShieldCheck, XCircle } from "lucide-react";
+import * as React from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RippleButton } from "@/components/ui/ripple-button";
-import { deploymentTimeline } from "@/lib/infrabox-data";
+import { usePipelines } from "@/hooks/use-pipelines";
 
 export default function DeploymentsPage() {
+  const { data: pipelines, isLoading } = usePipelines();
+
+  const confidence = React.useMemo(() => {
+    if (!pipelines?.length) return 0;
+    const scores = pipelines.map((pipeline) => pipeline.confidenceScore ?? 0);
+    return Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length);
+  }, [pipelines]);
+
+  const deploymentTimeline = React.useMemo(() => {
+    if (!pipelines?.length) return [];
+    return pipelines.slice(0, 5).map((pipeline, index) => ({
+      time: pipeline.createdAt ? new Date(pipeline.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "n/a",
+      title: `${pipeline.name} (${pipeline.status})`,
+      status: index === 0 ? "active" : pipeline.status === "success" ? "done" : "pending",
+    }));
+  }, [pipelines]);
+
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <div>
@@ -24,11 +42,13 @@ export default function DeploymentsPage() {
               <p className="text-xs uppercase tracking-[0.12em] text-primary">
                 Score
               </p>
-              <p className="mt-1 text-4xl font-bold text-slate-900">82 / 100</p>
+              <p className="mt-1 text-4xl font-bold text-slate-900">
+                {isLoading ? "..." : `${confidence} / 100`}
+              </p>
             </div>
             <div className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-700">
               <ShieldCheck className="h-4 w-4" />
-              SAFE TO DEPLOY
+              {confidence >= 70 ? "SAFE TO DEPLOY" : "REVIEW REQUIRED"}
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <RippleButton className="bg-emerald-600 text-white hover:bg-emerald-700">
@@ -49,6 +69,18 @@ export default function DeploymentsPage() {
           </CardHeader>
           <CardContent className="p-5">
             <div className="space-y-4">
+              {isLoading ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
+                  Loading deployment timeline...
+                </div>
+              ) : null}
+
+              {!isLoading && deploymentTimeline.length === 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
+                  No deployment history available.
+                </div>
+              ) : null}
+
               {deploymentTimeline.map((event, index) => (
                 <div key={event.title} className="flex gap-3">
                   <div className="flex flex-col items-center">

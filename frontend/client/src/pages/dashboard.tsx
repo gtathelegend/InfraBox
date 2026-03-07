@@ -21,8 +21,9 @@ import {
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useIncidents } from "@/hooks/use-incidents";
+import { usePipelines } from "@/hooks/use-pipelines";
 import { useWorkspace } from "@/context/workspace-context";
-import { dashboardTrend } from "@/lib/infrabox-data";
 
 function ConfidenceRing({ score }: { score: number }) {
   const radius = 34;
@@ -82,21 +83,49 @@ const timelineItems = [
   "Deployment",
 ];
 
+function toHourLabel(value: string | null | undefined) {
+  if (!value) return "n/a";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "n/a";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 export default function DashboardPage() {
   const [, navigate] = useLocation();
-  const { selectedRepo, metrics } = useWorkspace();
-  const [isLoading, setIsLoading] = React.useState(true);
+  const { selectedRepo, metrics, metricsLoading } = useWorkspace();
+  const { data: pipelines, isLoading: pipelinesLoading } = usePipelines();
+  const { data: incidents, isLoading: incidentsLoading } = useIncidents();
 
-  React.useEffect(() => {
-    const timer = window.setTimeout(() => setIsLoading(false), 750);
-    return () => window.clearTimeout(timer);
-  }, []);
+  const isLoading = metricsLoading || pipelinesLoading || incidentsLoading;
+
+  const dashboardTrend = React.useMemo(() => {
+    if (!pipelines?.length) return [];
+
+    return pipelines.slice(-7).map((pipeline) => {
+      const confidence = pipeline.confidenceScore ?? 0;
+      const cost = pipeline.costPrediction ?? 0;
+      const isFailed = pipeline.status === "failed";
+
+      return {
+        hour: toHourLabel(pipeline.createdAt),
+        cpu: Math.max(25, 100 - confidence),
+        memory: Math.max(30, Math.round(cost / 10)),
+        latency: Math.max(60, 220 - confidence),
+        errors: isFailed ? 1.8 : 0.5,
+      };
+    });
+  }, [pipelines]);
+
+  const recentAlerts = React.useMemo(() => {
+    if (!incidents?.length) return [];
+    return incidents.slice(0, 3);
+  }, [incidents]);
 
   const summaryCards = [
     {
       title: "Deployment Confidence Score",
       subtitle: `${metrics.deploymentConfidenceScore} / 100`,
-      detail: "SAFE TO DEPLOY",
+      detail: metrics.deploymentConfidenceScore >= 70 ? "SAFE TO DEPLOY" : "REQUIRES REVIEW",
       path: "/deployments",
       icon: CircleCheckBig,
     },
@@ -212,9 +241,7 @@ export default function DashboardPage() {
                       <p className="text-xs uppercase tracking-[0.1em] text-slate-500">
                         {card.title}
                       </p>
-                      <p className="text-2xl font-semibold text-slate-900">
-                        {card.subtitle}
-                      </p>
+                      <p className="text-2xl font-semibold text-slate-900">{card.subtitle}</p>
                       <p className="text-sm text-slate-600">{card.detail}</p>
                     </div>
                     {card.title === "Deployment Confidence Score" ? (
@@ -243,22 +270,8 @@ export default function DashboardPage() {
                       <XAxis dataKey="hour" tick={{ fill: "#64748b", fontSize: 12 }} />
                       <YAxis tick={{ fill: "#64748b", fontSize: 12 }} />
                       <Tooltip />
-                      <Line
-                        type="monotone"
-                        dataKey="cpu"
-                        stroke="#2563EB"
-                        strokeWidth={2.3}
-                        dot={false}
-                        isAnimationActive
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="memory"
-                        stroke="#6366F1"
-                        strokeWidth={2.3}
-                        dot={false}
-                        isAnimationActive
-                      />
+                      <Line type="monotone" dataKey="cpu" stroke="#2563EB" strokeWidth={2.3} dot={false} />
+                      <Line type="monotone" dataKey="memory" stroke="#6366F1" strokeWidth={2.3} dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -277,22 +290,8 @@ export default function DashboardPage() {
                       <XAxis dataKey="hour" tick={{ fill: "#64748b", fontSize: 12 }} />
                       <YAxis tick={{ fill: "#64748b", fontSize: 12 }} />
                       <Tooltip />
-                      <Line
-                        type="monotone"
-                        dataKey="latency"
-                        stroke="#F59E0B"
-                        strokeWidth={2.3}
-                        dot={false}
-                        isAnimationActive
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="errors"
-                        stroke="#EF4444"
-                        strokeWidth={2.3}
-                        dot={false}
-                        isAnimationActive
-                      />
+                      <Line type="monotone" dataKey="latency" stroke="#F59E0B" strokeWidth={2.3} dot={false} />
+                      <Line type="monotone" dataKey="errors" stroke="#EF4444" strokeWidth={2.3} dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -305,35 +304,27 @@ export default function DashboardPage() {
               <CardTitle className="text-lg">Recent Alerts</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <button
-                className="flex w-full items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left transition hover:border-slate-300"
-                onClick={() => navigate("/predictions/payment-service")}
-              >
-                <div>
-                  <p className="font-medium text-slate-900">Payment service memory pressure</p>
-                  <p className="text-sm text-slate-600">
-                    Predicted memory exhaustion during 10k concurrent users.
-                  </p>
+              {recentAlerts.length === 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+                  No incidents reported.
                 </div>
-                <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-600">
-                  danger
-                </span>
-              </button>
-
-              <button
-                className="flex w-full items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left transition hover:border-slate-300"
-                onClick={() => navigate("/pipeline/build-stage")}
-              >
-                <div>
-                  <p className="font-medium text-slate-900">Build cache miss spike</p>
-                  <p className="text-sm text-slate-600">
-                    Cache hit ratio dropped causing slower build completion.
-                  </p>
-                </div>
-                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-600">
-                  warning
-                </span>
-              </button>
+              ) : (
+                recentAlerts.map((incident) => (
+                  <button
+                    key={incident.id}
+                    className="flex w-full items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left transition hover:border-slate-300"
+                    onClick={() => navigate(`/predictions/${incident.component}`)}
+                  >
+                    <div>
+                      <p className="font-medium text-slate-900">{incident.title}</p>
+                      <p className="text-sm text-slate-600">{incident.description}</p>
+                    </div>
+                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-600">
+                      {incident.severity}
+                    </span>
+                  </button>
+                ))
+              )}
             </CardContent>
           </Card>
         </>

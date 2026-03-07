@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   CartesianGrid,
   Line,
@@ -13,16 +14,77 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { useWorkspace } from "@/context/workspace-context";
-import { buildSimulationSeries, simulationLoads } from "@/lib/infrabox-data";
+
+const simulationLoads = [100, 1000, 5000, 10000];
+
+function buildSimulationSeries(base: { cpu: number; memory: number; latency: number; errorRate: number }, users: number) {
+  const intensity = users / 10000;
+  return [
+    {
+      step: "Warmup",
+      cpu: Math.round(base.cpu * (0.75 + intensity * 0.12)),
+      memory: Math.round(base.memory * (0.72 + intensity * 0.15)),
+      latency: Math.round(base.latency * (0.7 + intensity * 0.2)),
+      errors: +(base.errorRate * (0.6 + intensity * 0.3)).toFixed(2),
+    },
+    {
+      step: "Spike",
+      cpu: Math.round(base.cpu * (0.95 + intensity * 0.2)),
+      memory: Math.round(base.memory * (0.9 + intensity * 0.25)),
+      latency: Math.round(base.latency * (0.95 + intensity * 0.35)),
+      errors: +(base.errorRate * (0.9 + intensity * 0.6)).toFixed(2),
+    },
+    {
+      step: "Steady",
+      cpu: Math.round(base.cpu * (0.85 + intensity * 0.14)),
+      memory: Math.round(base.memory * (0.84 + intensity * 0.16)),
+      latency: Math.round(base.latency * (0.82 + intensity * 0.22)),
+      errors: +(base.errorRate * (0.75 + intensity * 0.4)).toFixed(2),
+    },
+    {
+      step: "Recovery",
+      cpu: Math.round(base.cpu * (0.7 + intensity * 0.08)),
+      memory: Math.round(base.memory * (0.72 + intensity * 0.09)),
+      latency: Math.round(base.latency * (0.68 + intensity * 0.15)),
+      errors: +(base.errorRate * (0.6 + intensity * 0.2)).toFixed(2),
+    },
+  ];
+}
 
 export default function SimulationsPage() {
   const { selectedRepo } = useWorkspace();
   const [loadIndex, setLoadIndex] = React.useState(1);
   const selectedUsers = simulationLoads[loadIndex];
 
+  const { data: baseSimulation, isLoading } = useQuery({
+    queryKey: ["simulation", selectedRepo?.fullName ?? "workspace/default"],
+    queryFn: async () => {
+      const repo = selectedRepo?.fullName ?? "workspace/default";
+      const res = await fetch(`/api/simulation?repo=${encodeURIComponent(repo)}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch simulation data");
+      return (await res.json()) as {
+        cpu: number;
+        memory: number;
+        latency: number;
+        errorRate: number;
+      };
+    },
+  });
+
   const simulationData = React.useMemo(
-    () => buildSimulationSeries(selectedUsers),
-    [selectedUsers],
+    () =>
+      buildSimulationSeries(
+        {
+          cpu: baseSimulation?.cpu ?? 0,
+          memory: baseSimulation?.memory ?? 0,
+          latency: baseSimulation?.latency ?? 0,
+          errorRate: baseSimulation?.errorRate ?? 0,
+        },
+        selectedUsers,
+      ),
+    [baseSimulation?.cpu, baseSimulation?.errorRate, baseSimulation?.latency, baseSimulation?.memory, selectedUsers],
   );
 
   const peak = simulationData[1];
@@ -65,6 +127,12 @@ export default function SimulationsPage() {
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {isLoading ? (
+          <Card className="glass-card rounded-2xl md:col-span-2 xl:col-span-4">
+            <CardContent className="p-5 text-sm text-slate-600">Loading simulation metrics...</CardContent>
+          </Card>
+        ) : null}
+
         {[
           { label: "CPU usage", value: `${peak.cpu}%`, tone: "text-primary" },
           { label: "Memory usage", value: `${peak.memory}%`, tone: "text-accent" },

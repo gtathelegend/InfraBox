@@ -8,17 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiRequest } from "@/lib/queryClient";
 import { useWorkspace } from "@/context/workspace-context";
+import { useRepositories } from "@/hooks/use-repositories";
 
 type RepoItem = {
   fullName: string;
   lastCommitAgo: string;
 };
-
-const githubRepos: RepoItem[] = [
-  { fullName: "KartikSharma4448/MyPortfolio", lastCommitAgo: "13h ago" },
-  { fullName: "KartikSharma4448/GenZex", lastCommitAgo: "10d ago" },
-  { fullName: "KartikSharma4448/Auccostic-Ai", lastCommitAgo: "19d ago" },
-];
 
 const parseRepo = (fullName: string) => {
   const [owner, name] = fullName.split("/");
@@ -34,21 +29,24 @@ export default function ConnectRepositoryPage() {
     analysisSteps,
     isAnalyzing,
   } = useWorkspace();
+  const { data: repositories, isLoading: reposLoading } = useRepositories();
   const [query, setQuery] = React.useState("");
   const [selectedRepo, setSelectedRepoName] = React.useState<string | null>(null);
-  const [workspaceReady, setWorkspaceReady] = React.useState(false);
 
-  React.useEffect(() => {
-    const timer = window.setTimeout(() => setWorkspaceReady(true), 700);
-    return () => window.clearTimeout(timer);
-  }, []);
+  const repoOptions = React.useMemo<RepoItem[]>(() => {
+    if (!repositories?.length) return [];
+    return repositories.map((repo) => ({
+      fullName: repo.name.includes("/") ? repo.name : `workspace/${repo.name}`,
+      lastCommitAgo: repo.lastAnalyzed ? new Date(repo.lastAnalyzed).toLocaleString() : "Not analyzed",
+    }));
+  }, [repositories]);
 
   const filteredRepos = React.useMemo(() => {
-    if (!query.trim()) return githubRepos;
-    return githubRepos.filter((repo) =>
+    if (!query.trim()) return repoOptions;
+    return repoOptions.filter((repo) =>
       repo.fullName.toLowerCase().includes(query.toLowerCase()),
     );
-  }, [query]);
+  }, [query, repoOptions]);
 
   const handleAnalyzeRepository = async () => {
     if (!selectedRepo) return;
@@ -72,13 +70,13 @@ export default function ConnectRepositoryPage() {
       <div className="pointer-events-none absolute inset-0 floating-bg opacity-35" />
       <div className="relative z-10 mx-auto max-w-5xl space-y-6">
         <div className="rounded-2xl border border-slate-200 bg-white/85 p-4 text-sm text-slate-700">
-          {workspaceReady ? (
+          {!reposLoading ? (
             <span className="inline-flex items-center gap-2 font-medium text-emerald-700">
               <CheckCircle2 className="h-4 w-4" />
               Workspace initialization complete
             </span>
           ) : (
-            <span className="text-slate-500">Initializing workspace...</span>
+            <span className="text-slate-500">Loading repositories...</span>
           )}
         </div>
 
@@ -104,6 +102,11 @@ export default function ConnectRepositoryPage() {
             </div>
 
             <div className="max-h-[360px] overflow-y-auto rounded-2xl border border-slate-200 bg-white">
+              {!reposLoading && filteredRepos.length === 0 ? (
+                <div className="px-4 py-8 text-center text-sm text-slate-500">
+                  No repositories found.
+                </div>
+              ) : null}
               {filteredRepos.map((repo) => {
                 const isSelected = selectedRepo === repo.fullName;
                 return (
@@ -142,7 +145,7 @@ export default function ConnectRepositoryPage() {
             <RippleButton
               className="h-11 w-full bg-primary text-white hover:bg-primary/90"
               onClick={handleAnalyzeRepository}
-              disabled={!selectedRepo || isAnalyzing || !workspaceReady}
+              disabled={!selectedRepo || isAnalyzing || reposLoading}
             >
               {isAnalyzing ? "Analyzing..." : "Analyze Repository"}
             </RippleButton>
