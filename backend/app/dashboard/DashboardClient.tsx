@@ -2,7 +2,6 @@
 
 import { useUser } from "@auth0/nextjs-auth0/client";
 import { useState } from "react";
-import Link from "next/link";
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface WorkspaceData {
@@ -117,12 +116,12 @@ export default function DashboardClient() {
       <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-400 mb-4">You need to sign in to access the dashboard.</p>
-          <Link
-            href="/api/auth/login"
+          <a
+            href="/auth/login"
             className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition font-medium"
           >
             Sign In
-          </Link>
+          </a>
         </div>
       </div>
     );
@@ -155,12 +154,12 @@ export default function DashboardClient() {
                 />
               )}
             </div>
-            <Link
-              href="/api/auth/logout"
+            <a
+              href="/auth/logout"
               className="text-sm text-gray-400 hover:text-white transition px-3 py-1.5 rounded-lg hover:bg-white/5"
             >
               Logout
-            </Link>
+            </a>
           </div>
         </div>
       </header>

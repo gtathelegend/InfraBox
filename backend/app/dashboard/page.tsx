@@ -1,15 +1,14 @@
-import { getSession } from "@auth0/nextjs-auth0";
 import { redirect } from "next/navigation";
+import { auth0 } from "@/lib/auth0";
 import DashboardClient from "./DashboardClient";
 
 export const metadata = {
-  title: "Dashboard | InfraBox",
-  description: "Manage your DevOps workspaces, pipelines, and deployments",
+  title: "InfraBox | Predict. Protect. Deploy.",
+  description: "Predict. Protect. Deploy.",
 };
 
 export default async function DashboardPage() {
-  // Server-side session guard — unauthenticated users are redirected
-  const session = await getSession();
+  const session = await auth0.getSession();
   if (!session?.user) {
     redirect("/");
   }
