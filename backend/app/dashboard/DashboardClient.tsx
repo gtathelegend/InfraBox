@@ -148,6 +148,12 @@ export default function DashboardClient() {
             >
               Pipeline Visualizer
             </a>
+            <a
+              href="/assistant"
+              className="text-sm text-emerald-300 hover:text-emerald-200 transition px-3 py-1.5 rounded-lg border border-emerald-400/30 hover:bg-emerald-500/10"
+            >
+              DevOps Assistant
+            </a>
             <div className="flex items-center gap-3 bg-white/5 rounded-full pl-3 pr-1 py-1">
               <span className="text-sm text-gray-300 hidden sm:inline">
                 {user.name}
