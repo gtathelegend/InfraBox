@@ -6,6 +6,9 @@ const {
   parseRepositoryPipelines,
   getParsedPipelines,
 } = require("../services/pipelineParser/pipelineParserService");
+const {
+  fetchPipelineMetrics,
+} = require("../services/pipelineParser/pipelineMetricsCollectorService");
 
 function enforceAction(role, action) {
   if (!hasPermission(role, action)) {
@@ -84,7 +87,29 @@ async function getPipeline(req, res) {
   }
 }
 
+async function getPipelineMetrics(req, res) {
+  try {
+    const { repoId } = req.params;
+    const userId = req.auth.sub;
+
+    const repository = await ensureRepositoryAccess(repoId, userId);
+    const metrics = await fetchPipelineMetrics(repository);
+
+    return res.status(200).json({
+      message: "Pipeline metrics fetched successfully",
+      repositoryId: repoId,
+      pipelineSuccessRate: metrics.pipelineSuccessRate,
+      totalStageExecutions: metrics.totalStageExecutions,
+      stageMetrics: metrics.stageMetrics,
+      rawMetrics: metrics.rawMetrics,
+    });
+  } catch (err) {
+    return handleError(res, err, "Failed to fetch pipeline metrics");
+  }
+}
+
 module.exports = {
   parsePipeline,
   getPipeline,
+  getPipelineMetrics,
 };
