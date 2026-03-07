@@ -1,12 +1,22 @@
 import apiClient from "./apiClient";
 
-export interface AssistantReply {
-  reply: string;
+export interface AssistantQueryRequest {
+  workspaceId: string;
+  query: string;
+}
+
+export interface AssistantQueryResponse {
+  message?: string;
+  answer: string;
+  detectedIntent?: string;
+  intentConfidence?: number;
+  supportingData?: Record<string, string | number | boolean | null>;
+  conversationId?: string;
 }
 
 const assistantService = {
-  async sendMessage(message: string): Promise<AssistantReply> {
-    const response = await apiClient.post<AssistantReply>("/api/chat", { message });
+  async query(payload: AssistantQueryRequest): Promise<AssistantQueryResponse> {
+    const response = await apiClient.post<AssistantQueryResponse>("/api/assistant/query", payload);
     return response.data;
   },
 };

@@ -1,11 +1,21 @@
 import { motion } from "framer-motion";
 import { AlertTriangle, Clock3, Play, ShieldAlert } from "lucide-react";
 import * as React from "react";
+import {
+  Background,
+  Controls,
+  MarkerType,
+  ReactFlow,
+  type Edge,
+  type Node,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RippleButton } from "@/components/ui/ripple-button";
 import { useWorkspace } from "@/context/workspace-context";
 import { usePipelines } from "@/hooks/use-pipelines";
+import pipelineService from "@services/pipelineService";
 
 const statusTone: Record<string, string> = {
   success: "bg-emerald-100 text-emerald-700",
@@ -18,6 +28,21 @@ export default function PipelinePage() {
   const { data: pipelines, isLoading } = usePipelines();
   const [isRunning, setIsRunning] = React.useState(false);
   const [activeStage, setActiveStage] = React.useState(-1);
+  const [graphNodes, setGraphNodes] = React.useState<Node[]>([]);
+  const [graphEdges, setGraphEdges] = React.useState<Edge[]>([]);
+  const [graphLoading, setGraphLoading] = React.useState(true);
+  const [graphError, setGraphError] = React.useState<string | null>(null);
+
+  const resolvedRepoId = React.useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return (
+      new URLSearchParams(window.location.search).get("repoId") ||
+      window.localStorage.getItem("infrabox.repoId") ||
+      selectedRepo?.name ||
+      (import.meta.env.VITE_REPO_ID as string | undefined) ||
+      ""
+    );
+  }, [selectedRepo?.name]);
 
   const pipelineStages = React.useMemo(() => {
     const latest = pipelines?.[0];
@@ -36,6 +61,54 @@ export default function PipelinePage() {
         : [];
     return parsed.map((stage) => ({ name: stage, time: "-", failRate: "-", status: "success" }));
   }, [pipelines]);
+
+  React.useEffect(() => {
+    async function fetchPipelineGraph() {
+      if (!resolvedRepoId) {
+        setGraphLoading(false);
+        setGraphError("Missing repoId. Add ?repoId=<id> to URL or set infrabox.repoId.");
+        return;
+      }
+
+      try {
+        setGraphLoading(true);
+        setGraphError(null);
+
+        const graph = await pipelineService.getPipelineGraph(resolvedRepoId);
+        const spacing = 210;
+        const y = 120;
+
+        const dynamicNodes: Node[] = graph.nodes.map((node, index) => ({
+          id: node.id,
+          data: { label: node.id },
+          position: { x: index * spacing, y },
+          style: {
+            borderRadius: 14,
+            padding: 8,
+            border: "1px solid #bfdbfe",
+            background: "#ffffff",
+          },
+        }));
+
+        const dynamicEdges: Edge[] = graph.edges.map((edge, index) => ({
+          id: `edge-${index}-${edge.source}-${edge.target}`,
+          source: edge.source,
+          target: edge.target,
+          markerEnd: { type: MarkerType.ArrowClosed },
+          animated: true,
+        }));
+
+        setGraphNodes(dynamicNodes);
+        setGraphEdges(dynamicEdges);
+      } catch {
+        setGraphError("Failed to load pipeline graph.");
+      } finally {
+        setGraphLoading(false);
+      }
+    }
+
+    void fetchPipelineGraph();
+  }, [resolvedRepoId]);
 
   React.useEffect(() => {
     if (!isRunning) return;
@@ -185,6 +258,32 @@ export default function PipelinePage() {
                 Test stage takes 39% of total pipeline runtime.
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card rounded-2xl">
+          <CardHeader className="border-b border-slate-200/80">
+            <CardTitle className="text-lg">Pipeline Graph</CardTitle>
+          </CardHeader>
+          <CardContent className="h-[360px] p-0">
+            {graphLoading ? (
+              <div className="flex h-full items-center justify-center text-sm text-slate-600">
+                Loading pipeline graph...
+              </div>
+            ) : graphError ? (
+              <div className="flex h-full items-center justify-center px-6 text-center text-sm text-red-600">
+                {graphError}
+              </div>
+            ) : graphNodes.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-slate-600">
+                No graph data available.
+              </div>
+            ) : (
+              <ReactFlow nodes={graphNodes} edges={graphEdges} fitView>
+                <Background color="#dbeafe" gap={22} />
+                <Controls showInteractive={false} />
+              </ReactFlow>
+            )}
           </CardContent>
         </Card>
       </div>

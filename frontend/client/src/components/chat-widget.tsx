@@ -38,8 +38,22 @@ export function ChatWidget() {
     setInput("");
 
     try {
-      const response = await chatMutation.mutateAsync(userMsg.content);
-      const aiMsg: Message = { id: (Date.now() + 1).toString(), role: "ai", content: response.reply };
+      const workspaceId =
+        (typeof window !== "undefined" &&
+          new URLSearchParams(window.location.search).get("workspaceId")) ||
+        (typeof window !== "undefined" ? window.localStorage.getItem("infrabox.workspaceId") : null) ||
+        (import.meta.env.VITE_WORKSPACE_ID as string | undefined) ||
+        "";
+
+      const response = await chatMutation.mutateAsync({
+        workspaceId,
+        query: userMsg.content,
+      });
+      const aiMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "ai",
+        content: response.answer,
+      };
       setMessages(prev => [...prev, aiMsg]);
     } catch (err) {
       const errorMsg: Message = { id: (Date.now() + 1).toString(), role: "ai", content: "Sorry, I encountered an error connecting to my neural net." };

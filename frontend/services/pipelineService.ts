@@ -20,6 +20,26 @@ export interface PipelineOverview {
   failureProbability: number;
 }
 
+export interface PipelineGraphNode {
+  id: string;
+}
+
+export interface PipelineGraphEdge {
+  source: string;
+  target: string;
+}
+
+export interface PipelineGraphResponse {
+  nodes: PipelineGraphNode[];
+  edges: PipelineGraphEdge[];
+}
+
+function isPipelineGraphResponse(payload: unknown): payload is PipelineGraphResponse {
+  if (!payload || typeof payload !== "object") return false;
+  const candidate = payload as { nodes?: unknown; edges?: unknown };
+  return Array.isArray(candidate.nodes) && Array.isArray(candidate.edges);
+}
+
 const pipelineService = {
   async getPipelines(): Promise<Pipeline[]> {
     const response = await apiClient.get<Pipeline[]>("/api/pipelines");
@@ -36,6 +56,43 @@ const pipelineService = {
       params: { repo },
     });
     return response.data;
+  },
+
+  async getPipelineGraph(repoId: string): Promise<PipelineGraphResponse> {
+    const response = await apiClient.get<
+      | PipelineGraphResponse
+      | {
+          pipelines?: Array<{ stages?: string[] | string }>;
+        }
+    >(`/api/pipeline/${repoId}`);
+    const payload: unknown = response.data;
+
+    if (isPipelineGraphResponse(payload)) {
+      const graph = payload;
+      return {
+        nodes: graph.nodes,
+        edges: graph.edges ?? [],
+      };
+    }
+
+    const stagesRaw = (payload as { pipelines?: Array<{ stages?: string[] | string }> })
+      .pipelines?.[0]?.stages;
+    const stages = Array.isArray(stagesRaw)
+      ? stagesRaw
+      : typeof stagesRaw === "string"
+        ? stagesRaw
+            .split(",")
+            .map((stage) => stage.trim())
+            .filter(Boolean)
+        : [];
+
+    const nodes = stages.map((stage) => ({ id: stage }));
+    const edges = stages.slice(0, -1).map((stage, index) => ({
+      source: stage,
+      target: stages[index + 1],
+    }));
+
+    return { nodes, edges };
   },
 };
 

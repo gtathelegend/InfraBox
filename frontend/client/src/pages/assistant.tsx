@@ -9,12 +9,48 @@ import { useChat } from "@/hooks/use-chat";
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
+  supportingData?: Record<string, string | number | boolean | null>;
 };
+
+const TYPING_STEP_MS = 18;
+
+function resolveWorkspaceId() {
+  if (typeof window === "undefined") return "";
+  return (
+    new URLSearchParams(window.location.search).get("workspaceId") ||
+    window.localStorage.getItem("infrabox.workspaceId") ||
+    (import.meta.env.VITE_WORKSPACE_ID as string | undefined) ||
+    ""
+  );
+}
 
 export default function AssistantPage() {
   const [text, setText] = React.useState("");
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const chat = useChat();
+
+  const appendAssistantMessageWithTyping = async (
+    fullText: string,
+    supportingData?: Record<string, string | number | boolean | null>,
+  ) => {
+    setMessages((prev) => [...prev, { role: "assistant", content: "", supportingData }]);
+
+    for (let i = 1; i <= fullText.length; i += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, TYPING_STEP_MS));
+      setMessages((prev) => {
+        const next = [...prev];
+        const targetIndex = next.length - 1;
+        if (targetIndex >= 0) {
+          next[targetIndex] = {
+            ...next[targetIndex],
+            content: fullText.slice(0, i),
+            supportingData,
+          };
+        }
+        return next;
+      });
+    }
+  };
 
   const sendMessage = async () => {
     if (!text.trim() || chat.isPending) return;
@@ -23,16 +59,23 @@ export default function AssistantPage() {
     setText("");
 
     try {
-      const data = await chat.mutateAsync(userMessage);
-      setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
+      const workspaceId = resolveWorkspaceId();
+      if (!workspaceId) {
+        throw new Error("Missing workspaceId. Add ?workspaceId=<id> to URL or set infrabox.workspaceId.");
+      }
+
+      const data = await chat.mutateAsync({
+        workspaceId,
+        query: userMessage,
+      });
+      await appendAssistantMessageWithTyping(
+        data.answer,
+        data.supportingData,
+      );
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "I could not reach the assistant service. Please try again.",
-        },
-      ]);
+      await appendAssistantMessageWithTyping(
+        "I could not reach the assistant service. Please try again.",
+      );
     }
   };
 
@@ -76,6 +119,21 @@ export default function AssistantPage() {
                 }`}
               >
                 <p>{message.content}</p>
+                {message.supportingData && Object.keys(message.supportingData).length > 0 ? (
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                      Supporting Data
+                    </p>
+                    <div className="space-y-1 text-xs text-slate-700">
+                      {Object.entries(message.supportingData).map(([key, value]) => (
+                        <p key={key}>
+                          <span className="font-medium text-slate-900">{key}:</span>{" "}
+                          {String(value)}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
               {message.role === "user" ? (
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-700">

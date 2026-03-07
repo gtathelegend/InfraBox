@@ -1,18 +1,15 @@
 import { useMutation } from "@tanstack/react-query";
-import { api } from "@shared/routes";
+import assistantService, { type AssistantQueryResponse } from "@services/assistantService";
+
+type ChatPayload = {
+  workspaceId: string;
+  query: string;
+};
 
 export function useChat() {
   return useMutation({
-    mutationFn: async (message: string) => {
-      const res = await fetch(api.chat.send.path, {
-        method: api.chat.send.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to send message");
-      const data = await res.json();
-      return api.chat.send.responses[200].parse(data);
+    mutationFn: async (payload: ChatPayload): Promise<AssistantQueryResponse> => {
+      return assistantService.query(payload);
     },
   });
 }
