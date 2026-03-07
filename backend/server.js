@@ -4,6 +4,7 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const workspaceRoutes = require("./src/routes/workspaceRoutes");
+const userRoutes = require("./src/routes/userRoutes");
 
 const app = express();
 
@@ -13,6 +14,7 @@ app.use(express.json());
 
 // ─── Routes ─────────────────────────────────────────────────────────
 app.use("/api/workspaces", workspaceRoutes);
+app.use("/api/me", userRoutes);
 
 // ─── Health Check ───────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
