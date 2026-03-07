@@ -9,7 +9,7 @@ export default function Incidents() {
   const { data: incidents, isLoading } = useIncidents();
   const resolveMutation = useResolveIncident();
 
-  const handleResolve = (id: number) => {
+  const handleResolve = (id: string) => {
     resolveMutation.mutate(id);
   };
 

@@ -1,11 +1,10 @@
 import { motion } from "framer-motion";
 import { AlertTriangle, Lightbulb, ShieldAlert } from "lucide-react";
-import * as React from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useWorkspace } from "@/context/workspace-context";
-import { useIncidents } from "@/hooks/use-incidents";
+import { riskCards } from "@/lib/infrabox-data";
 
 const riskColor: Record<string, string> = {
   danger: "text-red-700 bg-red-100 border-red-200",
@@ -15,21 +14,6 @@ const riskColor: Record<string, string> = {
 
 export default function PredictionsPage() {
   const { selectedRepo } = useWorkspace();
-  const { data: incidents, isLoading } = useIncidents();
-
-  const riskCards = React.useMemo(() => {
-    if (!incidents?.length) return [];
-    return incidents.map((incident) => {
-      const probability = incident.severity === "high" ? 80 : incident.severity === "medium" ? 55 : 30;
-      return {
-        title: incident.title,
-        probability,
-        service: incident.component,
-        fix: incident.suggestedAction ?? "No suggested fix available.",
-        tone: incident.severity === "high" ? "danger" : "warning",
-      };
-    });
-  }, [incidents]);
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -42,20 +26,6 @@ export default function PredictionsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {isLoading ? (
-          <Card className="glass-card rounded-2xl md:col-span-2">
-            <CardContent className="p-5 text-sm text-slate-600">Loading prediction insights...</CardContent>
-          </Card>
-        ) : null}
-
-        {!isLoading && riskCards.length === 0 ? (
-          <Card className="glass-card rounded-2xl md:col-span-2">
-            <CardContent className="p-5 text-sm text-slate-600">
-              No prediction risks available right now.
-            </CardContent>
-          </Card>
-        ) : null}
-
         {riskCards.map((risk, index) => (
           <motion.div
             key={risk.title}

@@ -1,24 +1,11 @@
 import { motion } from "framer-motion";
-import { Activity, CheckCircle, Clock, RefreshCw, Search, ShieldAlert, XCircle } from "lucide-react";
+import { Activity, CheckCircle, Clock, Search, ShieldAlert, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { usePipelines } from "@/hooks/use-pipelines";
 import { format } from "date-fns";
 
 export default function Pipelines() {
   const { data: pipelines, isLoading } = usePipelines();
-
-  const parseStages = (stages: unknown) => {
-    if (Array.isArray(stages)) return stages.map(String);
-    if (typeof stages === "string") {
-      try {
-        const parsed = JSON.parse(stages) as unknown;
-        return Array.isArray(parsed) ? parsed.map(String) : [];
-      } catch {
-        return stages.split(",").map((stage) => stage.trim()).filter(Boolean);
-      }
-    }
-    return [];
-  };
 
   const getStatusIcon = (status: string) => {
     switch(status) {
@@ -90,17 +77,11 @@ export default function Pipelines() {
                     <div className="flex items-center justify-between relative">
                       <div className="absolute top-1/2 left-0 w-full h-0.5 bg-border/50 -z-10" />
                       
-                      {(parseStages(pipe.stages).length ? parseStages(pipe.stages) : ['Build', 'Test', 'Security Scan', 'Deploy']).map((stage, stepIdx, allStages) => {
-                        let stepStatus = pipe.status === 'success' ? 'success' : 'pending';
-                        if (pipe.status === 'running' && stepIdx === allStages.length - 1) {
-                          stepStatus = 'pending';
-                        }
-                        if (pipe.status === 'failed' && stepIdx === allStages.length - 1) {
-                          stepStatus = 'failed';
-                        }
-                        if (pipe.status === 'failed' && stepIdx < allStages.length - 1) {
-                          stepStatus = 'success';
-                        }
+                      {['Build', 'Test', 'Security Scan', 'Deploy'].map((stage, stepIdx) => {
+                        // Mocking step states based on overall status
+                        let stepStatus = 'success';
+                        if (pipe.status === 'failed' && stepIdx === 2) stepStatus = 'failed';
+                        if (pipe.status === 'failed' && stepIdx > 2) stepStatus = 'pending';
 
                         return (
                           <div key={stage} className="flex flex-col items-center bg-card px-2">
@@ -132,3 +113,6 @@ export default function Pipelines() {
     </div>
   );
 }
+
+// Ensure the spin icon works if used
+import { RefreshCw } from "lucide-react";

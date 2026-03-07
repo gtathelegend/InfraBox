@@ -1,8 +1,9 @@
 import * as React from "react";
+import { useAuth0 } from "@auth0/auth0-react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Route, Switch, useLocation } from "wouter";
 
-import { InfraboxShell } from "@/components/layout/infrabox-shell";
+import { AppLayout } from "@/components/layout/infrabox-shell";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WorkspaceProvider, useWorkspace } from "@/context/workspace-context";
@@ -14,6 +15,7 @@ import ConnectRepositoryPage from "@/pages/connect-repository";
 import CostInsightsPage from "@/pages/cost-insights";
 import DashboardPage from "@/pages/dashboard";
 import DeploymentsPage from "@/pages/deployments";
+import IncidentsPage from "@/pages/incidents";
 import LandingPage from "@/pages/landing";
 import MonitoringPage from "@/pages/monitoring";
 import NotFound from "@/pages/not-found";
@@ -37,7 +39,7 @@ function PrivateRoutes() {
       <Route path="/simulations" component={SimulationsPage} />
       <Route path="/predictions/:service" component={PredictionDetailPage} />
       <Route path="/predictions" component={PredictionsPage} />
-      <Route path="/incidents" component={PredictionsPage} />
+      <Route path="/incidents" component={IncidentsPage} />
       <Route path="/deployments" component={DeploymentsPage} />
       <Route path="/cost-insights" component={CostInsightsPage} />
       <Route path="/cost" component={CostInsightsPage} />
@@ -53,18 +55,50 @@ function PrivateRoutes() {
 function AppRouter() {
   const [location, navigate] = useLocation();
   const { selectedRepo } = useWorkspace();
+  const { isAuthenticated, isLoading } = useAuth0();
 
-  const isPublicRoute = location === "/" || location === "/auth";
+  const isLandingRoute = location === "/";
+  const isAuthRoute = location === "/auth";
   const isRepoConnectRoute = location === "/connect-repository";
+  const isPublicRoute = isLandingRoute || isAuthRoute;
 
   React.useEffect(() => {
-    if (!isPublicRoute && !isRepoConnectRoute && !selectedRepo) {
+    if (isLoading) return;
+
+    if (!isPublicRoute && !isAuthenticated) {
+      navigate("/auth");
+      return;
+    }
+
+    if (isAuthenticated && isAuthRoute) {
+      navigate(selectedRepo ? "/dashboard" : "/connect-repository");
+      return;
+    }
+
+    if (isAuthenticated && !isLandingRoute && !isAuthRoute && !isRepoConnectRoute && !selectedRepo) {
       navigate("/connect-repository");
     }
-  }, [isPublicRoute, isRepoConnectRoute, selectedRepo, navigate]);
+  }, [
+    isAuthenticated,
+    isAuthRoute,
+    isLandingRoute,
+    isLoading,
+    isPublicRoute,
+    isRepoConnectRoute,
+    navigate,
+    selectedRepo,
+  ]);
 
   if (location === "/") return <LandingPage />;
   if (location === "/auth") return <AuthPage />;
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#F8FAFC]">
+        <p className="text-sm text-slate-600">Loading authentication...</p>
+      </div>
+    );
+  }
+  if (!isAuthenticated) return <AuthPage />;
   if (location === "/connect-repository") return <ConnectRepositoryPage />;
 
   if (!selectedRepo) {
@@ -72,9 +106,9 @@ function AppRouter() {
   }
 
   return (
-    <InfraboxShell routeKey={location}>
+    <AppLayout routeKey={location}>
       <PrivateRoutes />
-    </InfraboxShell>
+    </AppLayout>
   );
 }
 

@@ -1,12 +1,17 @@
 import { useMutation } from "@tanstack/react-query";
 import { api } from "@shared/routes";
+import { getAccessToken } from "@/lib/auth-token";
 
 export function useChat() {
   return useMutation({
     mutationFn: async (message: string) => {
+      const token = await getAccessToken();
       const res = await fetch(api.chat.send.path, {
         method: api.chat.send.method,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ message }),
         credentials: "include",
       });
