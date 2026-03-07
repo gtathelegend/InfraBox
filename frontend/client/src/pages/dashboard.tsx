@@ -21,9 +21,11 @@ import {
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useIncidents } from "@/hooks/use-incidents";
-import { usePipelines } from "@/hooks/use-pipelines";
 import { useWorkspace } from "@/context/workspace-context";
+import dashboardService, {
+  type DashboardApiPayload,
+  type DeploymentHistoryItem,
+} from "@services/dashboardService";
 
 function ConfidenceRing({ score }: { score: number }) {
   const radius = 34;
@@ -83,69 +85,123 @@ const timelineItems = [
   "Deployment",
 ];
 
-function toHourLabel(value: string | null | undefined) {
+function formatHour(value: string | undefined) {
   if (!value) return "n/a";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "n/a";
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function calcHealth(payload: DashboardApiPayload) {
+  const highAlerts = payload.alerts.filter((item) => item.severity === "high").length;
+  const mediumAlerts = payload.alerts.filter((item) => item.severity === "medium").length;
+  return Math.max(35, 100 - highAlerts * 12 - mediumAlerts * 6);
+}
+
+function toDeploymentLabel(item: DeploymentHistoryItem) {
+  const status = item.deploymentStatus ?? "unknown";
+  const env = item.targetEnvironment ?? "env";
+  return `${status} (${env})`;
+}
+
 export default function DashboardPage() {
   const [, navigate] = useLocation();
-  const { selectedRepo, metrics, metricsLoading } = useWorkspace();
-  const { data: pipelines, isLoading: pipelinesLoading } = usePipelines();
-  const { data: incidents, isLoading: incidentsLoading } = useIncidents();
+  const { selectedRepo } = useWorkspace();
 
-  const isLoading = metricsLoading || pipelinesLoading || incidentsLoading;
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [dashboardData, setDashboardData] = React.useState<DashboardApiPayload>({
+    repositories: [],
+    pipelines: [],
+    deploymentHistory: [],
+    overview: null,
+    systemMetrics: null,
+    alerts: [],
+  });
+
+  React.useEffect(() => {
+    async function fetchDashboardData() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const workspaceId =
+          (typeof window !== "undefined" &&
+            new URLSearchParams(window.location.search).get("workspaceId")) ||
+          (typeof window !== "undefined" ? window.localStorage.getItem("infrabox.workspaceId") : null) ||
+          (import.meta.env.VITE_WORKSPACE_ID as string | undefined);
+
+        const payload = await dashboardService.getDashboardData({ workspaceId });
+        setDashboardData(payload);
+      } catch {
+        setError("Failed to load dashboard data");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void fetchDashboardData();
+  }, []);
 
   const dashboardTrend = React.useMemo(() => {
-    if (!pipelines?.length) return [];
+    const cpuPoints = dashboardData.overview?.metrics?.cpuUsageGraph ?? [];
+    const memoryPoints = dashboardData.overview?.metrics?.memoryUsageGraph ?? [];
+    const latencyPoints = dashboardData.overview?.metrics?.latencyTrends ?? [];
+    const errorPoints = dashboardData.overview?.metrics?.errorRateTrends ?? [];
 
-    return pipelines.slice(-7).map((pipeline) => {
-      const confidence = pipeline.confidenceScore ?? 0;
-      const cost = pipeline.costPrediction ?? 0;
-      const isFailed = pipeline.status === "failed";
+    if (!cpuPoints.length) {
+      return dashboardData.pipelines.slice(-7).map((pipeline) => ({
+        hour: formatHour(pipeline.createdAt),
+        cpu: Math.max(25, 100 - Number(pipeline.confidenceScore ?? 0)),
+        memory: Math.max(30, Math.round(Number(pipeline.costPrediction ?? 0) / 10)),
+        latency: Math.max(60, 220 - Number(pipeline.confidenceScore ?? 0)),
+        errors: pipeline.status === "failed" ? 1.8 : 0.5,
+      }));
+    }
 
-      return {
-        hour: toHourLabel(pipeline.createdAt),
-        cpu: Math.max(25, 100 - confidence),
-        memory: Math.max(30, Math.round(cost / 10)),
-        latency: Math.max(60, 220 - confidence),
-        errors: isFailed ? 1.8 : 0.5,
-      };
-    });
-  }, [pipelines]);
+    return cpuPoints.map((point, index) => ({
+      hour: formatHour(point.timestamp),
+      cpu: Number(point.value ?? 0),
+      memory: Number(memoryPoints[index]?.value ?? 0),
+      latency: Number(latencyPoints[index]?.value ?? 0),
+      errors: Number(errorPoints[index]?.value ?? 0),
+    }));
+  }, [dashboardData.overview?.metrics, dashboardData.pipelines]);
 
-  const recentAlerts = React.useMemo(() => {
-    if (!incidents?.length) return [];
-    return incidents.slice(0, 3);
-  }, [incidents]);
+  const deploymentConfidence = React.useMemo(() => {
+    if (!dashboardData.pipelines.length) return 0;
+    const values = dashboardData.pipelines
+      .map((pipeline) => Number(pipeline.confidenceScore ?? 0))
+      .filter((value) => Number.isFinite(value));
+    if (!values.length) return 0;
+    return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+  }, [dashboardData.pipelines]);
 
   const summaryCards = [
     {
       title: "Deployment Confidence Score",
-      subtitle: `${metrics.deploymentConfidenceScore} / 100`,
-      detail: metrics.deploymentConfidenceScore >= 70 ? "SAFE TO DEPLOY" : "REQUIRES REVIEW",
+      subtitle: `${deploymentConfidence} / 100`,
+      detail: deploymentConfidence >= 70 ? "SAFE TO DEPLOY" : "REQUIRES REVIEW",
       path: "/deployments",
       icon: CircleCheckBig,
     },
     {
       title: "Active Repositories",
-      subtitle: `${metrics.activeRepositories}`,
+      subtitle: `${dashboardData.repositories.length}`,
       detail: "Repository Integration active",
       path: "/repositories",
       icon: FolderGit2,
     },
     {
       title: "Simulation Status",
-      subtitle: metrics.simulationStatus,
+      subtitle: dashboardData.systemMetrics ? "Live" : "Unavailable",
       detail: "Latest infrastructure simulation",
       path: "/simulations",
       icon: Activity,
     },
     {
       title: "Infrastructure Health",
-      subtitle: `${metrics.infrastructureHealth}%`,
+      subtitle: `${calcHealth(dashboardData)}%`,
       detail: "Failure Prediction confidence",
       path: "/predictions",
       icon: AlertTriangle,
@@ -162,6 +218,12 @@ export default function DashboardPage() {
             : "Real-time operational snapshot for your DevOps workspace."}
         </p>
       </motion.div>
+
+      {error ? (
+        <Card className="rounded-2xl border-red-200 bg-red-50">
+          <CardContent className="p-4 text-sm text-red-700">{error}</CardContent>
+        </Card>
+      ) : null}
 
       <Card className="glass-card rounded-2xl">
         <CardHeader>
@@ -211,7 +273,7 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {isLoading ? (
+      {loading ? (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {Array.from({ length: 4 }).map((_, index) => (
@@ -245,7 +307,7 @@ export default function DashboardPage() {
                       <p className="text-sm text-slate-600">{card.detail}</p>
                     </div>
                     {card.title === "Deployment Confidence Score" ? (
-                      <ConfidenceRing score={metrics.deploymentConfidenceScore} />
+                      <ConfidenceRing score={deploymentConfidence} />
                     ) : (
                       <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
                         <card.icon className="h-5 w-5" />
@@ -299,34 +361,57 @@ export default function DashboardPage() {
             </button>
           </div>
 
-          <Card className="glass-card rounded-2xl">
-            <CardHeader>
-              <CardTitle className="text-lg">Recent Alerts</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {recentAlerts.length === 0 ? (
-                <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
-                  No incidents reported.
-                </div>
-              ) : (
-                recentAlerts.map((incident) => (
-                  <button
-                    key={incident.id}
-                    className="flex w-full items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left transition hover:border-slate-300"
-                    onClick={() => navigate(`/predictions/${incident.component}`)}
-                  >
-                    <div>
-                      <p className="font-medium text-slate-900">{incident.title}</p>
-                      <p className="text-sm text-slate-600">{incident.description}</p>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card className="glass-card rounded-2xl">
+              <CardHeader>
+                <CardTitle className="text-lg">Recent Alerts</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {dashboardData.alerts.length === 0 ? (
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+                    No active alerts.
+                  </div>
+                ) : (
+                  dashboardData.alerts.slice(0, 3).map((alert, index) => (
+                    <div
+                      key={`${alert.type ?? "alert"}-${index}`}
+                      className="rounded-xl border border-slate-200 bg-white p-4"
+                    >
+                      <p className="text-sm font-medium text-slate-900">{alert.message ?? "Alert"}</p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.08em] text-slate-500">
+                        {alert.severity ?? "unknown"}
+                      </p>
                     </div>
-                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-600">
-                      {incident.severity}
-                    </span>
-                  </button>
-                ))
-              )}
-            </CardContent>
-          </Card>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card rounded-2xl">
+              <CardHeader>
+                <CardTitle className="text-lg">Deployment History</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {dashboardData.deploymentHistory.length === 0 ? (
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+                    No deployment history available.
+                  </div>
+                ) : (
+                  dashboardData.deploymentHistory.slice(0, 3).map((deployment, index) => (
+                    <div
+                      key={deployment.deploymentId ?? deployment._id ?? String(index)}
+                      className="rounded-xl border border-slate-200 bg-white p-4"
+                    >
+                      <p className="text-sm font-medium text-slate-900">{toDeploymentLabel(deployment)}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {formatHour(deployment.startedAt)}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </>
       )}
 
