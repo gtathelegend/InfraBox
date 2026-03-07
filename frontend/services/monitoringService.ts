@@ -20,6 +20,16 @@ export interface SimulationMetrics {
   errorRate: number;
 }
 
+export interface SystemMetrics {
+  cpuUsage: number;
+  memoryUsage: number;
+  latency: number;
+  errorRate: number;
+  traffic: number;
+  cloudCost?: number;
+  timestamp?: string;
+}
+
 const monitoringService = {
   async getIncidents(): Promise<Incident[]> {
     const response = await apiClient.get<Incident[]>("/api/incidents");
@@ -34,6 +44,13 @@ const monitoringService = {
   async getSimulationMetrics(repo: string): Promise<SimulationMetrics> {
     const response = await apiClient.get<SimulationMetrics>("/api/simulation", {
       params: { repo },
+    });
+    return response.data;
+  },
+
+  async getSystemMetrics(workspaceId?: string): Promise<SystemMetrics> {
+    const response = await apiClient.get<SystemMetrics>("/api/monitoring/metrics", {
+      params: workspaceId ? { workspaceId } : undefined,
     });
     return response.data;
   },
