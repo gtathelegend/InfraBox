@@ -14,6 +14,15 @@ export interface AnalyzeResponse {
   message: string;
 }
 
+export interface DeploymentRunResponse {
+  message: string;
+  deploymentId: string;
+  deploymentStatus: string;
+  repositoryId: number | null;
+  targetEnvironment: string;
+  updatedAt: string;
+}
+
 const deploymentService = {
   async queueRepositoryAnalysis(repo: string): Promise<AnalyzeResponse> {
     const response = await apiClient.post<AnalyzeResponse>("/analyze", { repo });
@@ -29,6 +38,14 @@ const deploymentService = {
 
   async getDeploymentTimeline(): Promise<Pipeline[]> {
     const response = await apiClient.get<Pipeline[]>("/api/pipelines");
+    return response.data;
+  },
+
+  async triggerDeployment(payload: {
+    repositoryId?: number;
+    targetEnvironment?: string;
+  }): Promise<DeploymentRunResponse> {
+    const response = await apiClient.post<DeploymentRunResponse>("/api/deploy/run", payload);
     return response.data;
   },
 };

@@ -103,6 +103,7 @@ export default function AuthPage() {
                 <RippleButton
                   className="h-11 w-full bg-primary text-white hover:bg-primary/90"
                   onClick={() => navigate("/connect-repository")}
+                  data-testid="continue-workspace-btn"
                 >
                   Continue to Workspace
                 </RippleButton>

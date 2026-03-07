@@ -24,9 +24,15 @@ const dashboardRoutes = require("./src/routes/dashboardRoutes");
 const { startMonitoringCollectors } = require("./src/services/monitoring/monitoringService");
 
 const app = express();
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:3000";
 
 // ─── Core Middleware ────────────────────────────────────────────────
-app.use(cors());
+app.use(
+  cors({
+    origin: FRONTEND_ORIGIN,
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // ─── Routes ─────────────────────────────────────────────────────────

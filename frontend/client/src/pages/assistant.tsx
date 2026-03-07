@@ -160,6 +160,7 @@ export default function AssistantPage() {
               className="h-11"
               value={text}
               onChange={(event) => setText(event.target.value)}
+              data-testid="assistant-input"
               onKeyDown={(event) => {
                 if (event.key === "Enter") void sendMessage();
               }}
@@ -168,6 +169,7 @@ export default function AssistantPage() {
               className="h-11 bg-primary text-white hover:bg-primary/90"
               onClick={() => void sendMessage()}
               disabled={!text.trim() || chat.isPending}
+              data-testid="assistant-send-btn"
             >
               <SendHorizonal className="h-4 w-4" />
               {chat.isPending ? "Sending..." : "Send"}

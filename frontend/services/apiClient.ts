@@ -12,6 +12,11 @@ type RetriableRequestConfig = InternalAxiosRequestConfig & {
 const MAX_RETRIES = 2;
 const RETRY_BASE_DELAY_MS = 500;
 
+const API_BASE_URL =
+  (import.meta.env.VITE_API_URL as string | undefined) ||
+  (import.meta.env.NEXT_PUBLIC_API_URL as string | undefined) ||
+  (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_API_URL : undefined);
+
 function shouldRetry(error: AxiosError) {
   const status = error.response?.status;
   if (!status) return true;
@@ -23,7 +28,7 @@ function wait(ms: number) {
 }
 
 const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },

@@ -4,9 +4,12 @@ import * as React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RippleButton } from "@/components/ui/ripple-button";
 import { usePipelines } from "@/hooks/use-pipelines";
+import deploymentService from "@services/deploymentService";
 
 export default function DeploymentsPage() {
   const { data: pipelines, isLoading } = usePipelines();
+  const [deployStatus, setDeployStatus] = React.useState<string | null>(null);
+  const [isDeploying, setIsDeploying] = React.useState(false);
 
   const confidence = React.useMemo(() => {
     if (!pipelines?.length) return 0;
@@ -22,6 +25,21 @@ export default function DeploymentsPage() {
       status: index === 0 ? "active" : pipeline.status === "success" ? "done" : "pending",
     }));
   }, [pipelines]);
+
+  const handleApproveDeployment = async () => {
+    try {
+      setIsDeploying(true);
+      const response = await deploymentService.triggerDeployment({
+        repositoryId: pipelines?.[0]?.repositoryId,
+        targetEnvironment: "production",
+      });
+      setDeployStatus(response.deploymentStatus);
+    } catch {
+      setDeployStatus("failed");
+    } finally {
+      setIsDeploying(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -50,10 +68,20 @@ export default function DeploymentsPage() {
               <ShieldCheck className="h-4 w-4" />
               {confidence >= 70 ? "SAFE TO DEPLOY" : "REVIEW REQUIRED"}
             </div>
+            {deployStatus ? (
+              <div data-testid="deployment-status" className="text-sm font-medium text-slate-700">
+                Deployment status: {deployStatus}
+              </div>
+            ) : null}
             <div className="grid gap-3 sm:grid-cols-2">
-              <RippleButton className="bg-emerald-600 text-white hover:bg-emerald-700">
+              <RippleButton
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
+                onClick={() => void handleApproveDeployment()}
+                disabled={isDeploying}
+                data-testid="approve-deployment-btn"
+              >
                 <CheckCircle2 className="h-4 w-4" />
-                Approve Deployment
+                {isDeploying ? "Deploying..." : "Approve Deployment"}
               </RippleButton>
               <RippleButton variant="outline" className="border-red-200 text-red-700">
                 <XCircle className="h-4 w-4" />

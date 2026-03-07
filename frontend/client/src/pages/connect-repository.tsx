@@ -107,7 +107,7 @@ export default function ConnectRepositoryPage() {
                   No repositories found.
                 </div>
               ) : null}
-              {filteredRepos.map((repo) => {
+              {filteredRepos.map((repo, index) => {
                 const isSelected = selectedRepo === repo.fullName;
                 return (
                   <motion.button
@@ -115,6 +115,7 @@ export default function ConnectRepositoryPage() {
                     type="button"
                     onClick={() => setSelectedRepoName(repo.fullName)}
                     whileHover={{ x: 2 }}
+                    data-testid={`repo-option-${index}`}
                     className={`flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left transition last:border-b-0 ${
                       isSelected ? "bg-primary/10" : "hover:bg-slate-50"
                     }`}
@@ -146,6 +147,7 @@ export default function ConnectRepositoryPage() {
               className="h-11 w-full bg-primary text-white hover:bg-primary/90"
               onClick={handleAnalyzeRepository}
               disabled={!selectedRepo || isAnalyzing || reposLoading}
+              data-testid="analyze-repo-btn"
             >
               {isAnalyzing ? "Analyzing..." : "Analyze Repository"}
             </RippleButton>

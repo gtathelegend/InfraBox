@@ -102,6 +102,11 @@ export async function registerRoutes(
     res.json(repos);
   });
 
+  app.get("/api/repos", async (req, res) => {
+    const repos = await storage.getRepositories();
+    res.json(repos);
+  });
+
   app.post(api.repositories.connect.path, async (req, res) => {
     try {
       const input = api.repositories.connect.input.parse(req.body);
@@ -204,6 +209,94 @@ export async function registerRoutes(
       stages: ["Build", "Test", "Security Scan", "Container Build", "Deploy"],
       slowestStage: "Test",
       failureProbability: 0.18,
+    });
+  });
+
+  app.get("/api/pipeline/:repoId", async (req, res) => {
+    const pipelineList = await storage.getPipelines();
+    const candidate = pipelineList.find((item) => String(item.repositoryId) === String(req.params.repoId)) ?? pipelineList[0];
+
+    const stages: string[] = Array.isArray(candidate?.stages)
+      ? candidate.stages
+      : typeof candidate?.stages === "string"
+        ? candidate.stages
+            .split(",")
+            .map((stage) => stage.trim())
+            .filter(Boolean)
+        : ["Build", "Test", "Security Scan", "Deploy"];
+
+    res.json({
+      nodes: stages.map((stage) => ({ id: stage })),
+      edges: stages.slice(0, -1).map((stage: string, index: number) => ({
+        source: stage,
+        target: stages[index + 1],
+      })),
+    });
+  });
+
+  app.get("/api/deploy/history", async (req, res) => {
+    const pipelineList = await storage.getPipelines();
+    const deployments = pipelineList.map((pipeline) => ({
+      deploymentId: String(pipeline.id),
+      deploymentStatus: pipeline.status,
+      targetEnvironment: pipeline.name.toLowerCase().includes("prod") ? "production" : "staging",
+      startedAt: pipeline.createdAt,
+    }));
+
+    res.json({
+      count: deployments.length,
+      deployments,
+    });
+  });
+
+  app.post("/api/deploy/run", async (req, res) => {
+    const body = req.body as { repositoryId?: number; targetEnvironment?: string };
+    res.json({
+      message: "Deployment trigger accepted",
+      deploymentId: `${Date.now()}`,
+      deploymentStatus: "running",
+      repositoryId: body.repositoryId ?? null,
+      targetEnvironment: body.targetEnvironment ?? "staging",
+      updatedAt: new Date().toISOString(),
+    });
+  });
+
+  app.post("/api/assistant/query", async (req, res) => {
+    const { workspaceId, query } = req.body as { workspaceId?: string; query?: string };
+
+    if (!workspaceId || !query) {
+      return res.status(400).json({
+        message: "workspaceId and query are required",
+      });
+    }
+
+    const lowerQuery = query.toLowerCase();
+    let answer = "Infrastructure is stable with no critical incidents.";
+    if (lowerQuery.includes("fail")) {
+      answer = "Payment service memory exceeded container limit.";
+    } else if (lowerQuery.includes("deploy")) {
+      answer = "Deployment risk is elevated due to memory pressure in payment-service.";
+    } else if (lowerQuery.includes("cost")) {
+      answer = "Two worker instances are underutilized and can be rightsized.";
+    }
+
+    return res.json({
+      answer,
+      supportingData: {
+        cpuUsage: "92%",
+        memoryUsage: "88%",
+      },
+    });
+  });
+
+  app.get("/api/monitoring/metrics", async (_req, res) => {
+    res.json({
+      cpuUsage: 65,
+      memoryUsage: 58,
+      latency: 120,
+      errorRate: 0.02,
+      traffic: 3200,
+      timestamp: new Date().toISOString(),
     });
   });
 
