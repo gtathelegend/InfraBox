@@ -1,6 +1,7 @@
 import * as React from "react";
 
 type RepoContext = {
+  id: number;
   owner: string;
   name: string;
   fullName: string;
@@ -19,7 +20,58 @@ type RunAnalysisOptions = {
   withModal?: boolean;
 };
 
+type UserState = {
+  id: number;
+  auth0Id: string;
+  email: string;
+  workspaceId: number | null;
+};
+
+type WorkspaceState = {
+  id: number;
+  name: string;
+};
+
+type AnalysisState = {
+  analysisId: number;
+  deploymentConfidence: number;
+  pipelineGraph: { nodes: Array<{ id: string }>; edges: Array<{ source: string; target: string }> };
+  trafficSimulation: Array<{
+    users: number;
+    cpuUsage: string;
+    memoryUsage: string;
+    latency: string;
+    failureProbability: string;
+    risk?: string;
+  }>;
+  infrastructureCompatibility: {
+    result: string;
+    serverMemoryGb: number;
+    predictedMemoryGb: number;
+    serverCpuCores: number;
+    predictedCpuCores: number;
+    risks: string[];
+  } | null;
+  suggestions: Array<{ issue: string; solution: string; codeLocation: string | null }>;
+  codebaseOverview: {
+    framework: string;
+    backend: string;
+    language: string;
+    services: string[];
+    dependencies: string[];
+    database: string;
+    cache: string;
+  };
+  usage: {
+    estimatedCpuCores: number | null;
+    estimatedMemoryGb: number | null;
+  };
+};
+
 type WorkspaceContextValue = {
+  user: UserState | null;
+  workspace: WorkspaceState | null;
+  role: string | null;
   selectedRepo: RepoContext | null;
   setSelectedRepo: (repo: RepoContext | null) => void;
   metrics: DashboardMetrics;
@@ -28,163 +80,262 @@ type WorkspaceContextValue = {
   analysisStepIndex: number;
   analysisModalOpen: boolean;
   isAnalyzing: boolean;
+  latestAnalysis: AnalysisState | null;
+  bootstrapped: boolean;
+  bootstrapSession: (auth0Id: string, email: string) => Promise<void>;
+  refreshMetrics: () => Promise<void>;
   runFullAnalysis: (options?: RunAnalysisOptions) => Promise<void>;
 };
 
-const STORAGE_KEY = "infrabox.selectedRepo";
+const REPO_STORAGE_KEY = "infrabox.selectedRepo";
+const AUTH_STORAGE_KEY = "infrabox.auth";
 
 const initialMetrics: DashboardMetrics = {
   deploymentConfidenceScore: 0,
   activeRepositories: 0,
-  simulationStatus: "Unknown",
+  simulationStatus: "Not started",
   infrastructureHealth: 0,
 };
 
 const analysisSteps = [
-  "Scanning repository",
-  "Detecting dependencies",
-  "Parsing CI/CD pipeline",
-  "Running simulation",
-  "Predicting failures",
-  "Calculating deployment score",
+  "Queueing AI analysis job",
+  "Analyzing repository architecture",
+  "Simulating traffic scenarios",
+  "Evaluating infrastructure compatibility",
+  "Generating preventive suggestions",
+  "Finalizing dashboard results",
 ];
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
-type PipelineItem = { status?: string; confidenceScore?: number | null };
-
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(Math.max(value, min), max);
-
 const WorkspaceContext = React.createContext<WorkspaceContextValue | null>(null);
 
+function formatRepo(fullName: string, id: number, defaultBranch?: string | null, lastAnalyzed?: string | null): RepoContext {
+  const [owner, name] = fullName.includes("/") ? fullName.split("/") : ["workspace", fullName];
+  const lastCommitAgo = lastAnalyzed ? new Date(lastAnalyzed).toLocaleString() : "Not analyzed";
+  return {
+    id,
+    owner,
+    name,
+    fullName,
+    branch: defaultBranch ?? "main",
+    lastCommitAgo,
+  };
+}
+
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
+  const [bootstrapped, setBootstrapped] = React.useState(false);
+  const [user, setUser] = React.useState<UserState | null>(null);
+  const [workspace, setWorkspace] = React.useState<WorkspaceState | null>(null);
+  const [role, setRole] = React.useState<string | null>(null);
+
   const [selectedRepo, setSelectedRepoState] = React.useState<RepoContext | null>(null);
   const [metrics, setMetrics] = React.useState<DashboardMetrics>(initialMetrics);
-  const [metricsLoading, setMetricsLoading] = React.useState(true);
+  const [metricsLoading, setMetricsLoading] = React.useState(false);
   const [analysisStepIndex, setAnalysisStepIndex] = React.useState(-1);
   const [analysisModalOpen, setAnalysisModalOpen] = React.useState(false);
   const [isAnalyzing, setIsAnalyzing] = React.useState(false);
-
-  React.useEffect(() => {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-
-    try {
-      const parsed = JSON.parse(raw) as RepoContext;
-      setSelectedRepoState(parsed);
-    } catch {
-      window.localStorage.removeItem(STORAGE_KEY);
-    }
-  }, []);
+  const [latestAnalysis, setLatestAnalysis] = React.useState<AnalysisState | null>(null);
 
   const setSelectedRepo = React.useCallback((repo: RepoContext | null) => {
     setSelectedRepoState(repo);
     if (!repo) {
-      window.localStorage.removeItem(STORAGE_KEY);
+      window.localStorage.removeItem(REPO_STORAGE_KEY);
       return;
     }
 
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(repo));
+    window.localStorage.setItem(REPO_STORAGE_KEY, JSON.stringify(repo));
   }, []);
 
-  const refreshMetrics = React.useCallback(async (repoName?: string) => {
+  const loadAnalysis = React.useCallback(async (workspaceId: number, repoId: number) => {
+    const response = await fetch(
+      `/api/dashboard/result?workspaceId=${workspaceId}&repoId=${repoId}`,
+      { credentials: "include" },
+    );
+
+    if (!response.ok) {
+      setLatestAnalysis(null);
+      return;
+    }
+
+    const payload = (await response.json()) as (AnalysisState & { analysisId?: number | null });
+    if (!payload.analysisId) {
+      setLatestAnalysis(null);
+      setMetrics((prev) => ({
+        ...prev,
+        deploymentConfidenceScore: 0,
+        simulationStatus: "Not started",
+        infrastructureHealth: 0,
+      }));
+      return;
+    }
+
+    setLatestAnalysis(payload);
+
+    const risks = payload.infrastructureCompatibility?.risks.length ?? 0;
+    setMetrics({
+      deploymentConfidenceScore: payload.deploymentConfidence,
+      activeRepositories: metrics.activeRepositories,
+      simulationStatus: payload.trafficSimulation.length ? "Completed" : "Not started",
+      infrastructureHealth: Math.max(20, 100 - risks * 18),
+    });
+  }, [metrics.activeRepositories]);
+
+  const refreshMetrics = React.useCallback(async () => {
+    if (!workspace?.id) {
+      setMetrics(initialMetrics);
+      return;
+    }
+
     setMetricsLoading(true);
     try {
-      const [reposRes, pipelinesRes, incidentsRes] = await Promise.all([
-        fetch("/api/repositories", { credentials: "include" }),
-        fetch("/api/pipelines", { credentials: "include" }),
-        fetch("/api/incidents", { credentials: "include" }),
-      ]);
-
-      const repos = reposRes.ok ? ((await reposRes.json()) as unknown[]) : [];
-      const pipelines = pipelinesRes.ok ? ((await pipelinesRes.json()) as PipelineItem[]) : [];
-      const incidents = incidentsRes.ok
-        ? ((await incidentsRes.json()) as Array<{ status?: string }>)
-        : [];
-
-      const repoQuery = repoName ?? selectedRepo?.name ?? "workspace";
-      const simulationRes = await fetch(`/api/simulation?repo=${encodeURIComponent(repoQuery)}`, {
+      const reposRes = await fetch(`/api/git/repos?workspaceId=${workspace.id}`, {
         credentials: "include",
       });
+      const repos = reposRes.ok ? ((await reposRes.json()) as Array<{ id: number }>) : [];
 
-      const failedPipelines = pipelines.filter((p) => p.status === "failed").length;
-      const openIncidents = incidents.filter((i) => i.status !== "resolved").length;
-      const confidenceScores = pipelines
-        .map((p) => p.confidenceScore ?? 0)
-        .filter((score) => Number.isFinite(score));
-      const averageConfidence = confidenceScores.length
-        ? Math.round(confidenceScores.reduce((acc, score) => acc + score, 0) / confidenceScores.length)
-        : 0;
-
-      setMetrics({
-        deploymentConfidenceScore: averageConfidence,
+      setMetrics((prev) => ({
+        ...prev,
         activeRepositories: repos.length,
-        simulationStatus: simulationRes.ok ? "Completed" : "Unavailable",
-        infrastructureHealth: clamp(100 - failedPipelines * 8 - openIncidents * 12, 35, 100),
-      });
-    } catch {
-      setMetrics(initialMetrics);
+      }));
+
+      if (selectedRepo) {
+        await loadAnalysis(workspace.id, selectedRepo.id);
+      }
     } finally {
       setMetricsLoading(false);
     }
-  }, [selectedRepo?.name]);
+  }, [workspace?.id, selectedRepo, loadAnalysis]);
+
+  const bootstrapSession = React.useCallback(async (auth0Id: string, email: string) => {
+    const response = await fetch(
+      `/api/me?auth0Id=${encodeURIComponent(auth0Id)}&email=${encodeURIComponent(email)}`,
+      { credentials: "include" },
+    );
+
+    if (!response.ok) {
+      throw new Error("Unable to initialize account");
+    }
+
+    const payload = (await response.json()) as {
+      user: UserState;
+      workspace: WorkspaceState;
+      role: string;
+    };
+
+    setUser(payload.user);
+    setWorkspace(payload.workspace);
+    setRole(payload.role);
+    window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ auth0Id, email }));
+
+    const repoRaw = window.localStorage.getItem(REPO_STORAGE_KEY);
+    if (repoRaw) {
+      try {
+        const parsed = JSON.parse(repoRaw) as RepoContext;
+        setSelectedRepoState(parsed);
+      } catch {
+        window.localStorage.removeItem(REPO_STORAGE_KEY);
+      }
+    }
+
+    setBootstrapped(true);
+  }, []);
 
   React.useEffect(() => {
+    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) {
+      setBootstrapped(true);
+      return;
+    }
+
+    const parsed = JSON.parse(raw) as { auth0Id?: string; email?: string };
+    if (!parsed.auth0Id || !parsed.email) {
+      setBootstrapped(true);
+      return;
+    }
+
+    bootstrapSession(parsed.auth0Id, parsed.email)
+      .catch(() => {
+        window.localStorage.removeItem(AUTH_STORAGE_KEY);
+      })
+      .finally(() => {
+        setBootstrapped(true);
+      });
+  }, [bootstrapSession]);
+
+  React.useEffect(() => {
+    if (!workspace?.id) return;
     void refreshMetrics();
-  }, [refreshMetrics]);
+  }, [workspace?.id, refreshMetrics]);
 
   const runFullAnalysis = React.useCallback(
     async (options?: RunAnalysisOptions) => {
-      if (isAnalyzing) return;
+      if (isAnalyzing || !workspace?.id || !selectedRepo?.id) return;
 
       const withModal = options?.withModal ?? true;
       setIsAnalyzing(true);
-      setAnalysisStepIndex(0);
       if (withModal) setAnalysisModalOpen(true);
+      setAnalysisStepIndex(0);
 
       try {
-        const repo = selectedRepo?.fullName ?? "workspace/default";
-
-        setAnalysisStepIndex(0);
-        await fetch("/analyze", {
+        const response = await fetch("/api/analysis/run", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ repo }),
+          body: JSON.stringify({ workspaceId: workspace.id, repoId: selectedRepo.id }),
         });
 
+        if (!response.ok) {
+          throw new Error("Failed to queue analysis job");
+        }
+
+        const { jobId } = (await response.json()) as { jobId: number };
         setAnalysisStepIndex(1);
-        await fetch(`/api/analysis?repo=${encodeURIComponent(repo)}`, {
-          credentials: "include",
-        });
 
-        setAnalysisStepIndex(2);
-        await fetch(`/api/pipeline?repo=${encodeURIComponent(repo)}`, {
-          credentials: "include",
-        });
+        let done = false;
+        while (!done) {
+          await wait(1400);
+          const statusResponse = await fetch(`/api/analysis/jobs/${jobId}`, { credentials: "include" });
+          if (!statusResponse.ok) {
+            throw new Error("Failed to poll analysis status");
+          }
 
-        setAnalysisStepIndex(3);
-        await fetch(`/api/simulation?repo=${encodeURIComponent(repo)}`, {
-          credentials: "include",
-        });
+          const statusPayload = (await statusResponse.json()) as {
+            status: string;
+            analysisId: number | null;
+            error?: string;
+          };
 
-        setAnalysisStepIndex(4);
-        await wait(250);
-        setAnalysisStepIndex(5);
+          if (statusPayload.status === "running") {
+            setAnalysisStepIndex((current) => Math.min(current + 1, analysisSteps.length - 2));
+          }
 
-        await refreshMetrics(selectedRepo?.name);
+          if (statusPayload.status === "failed") {
+            throw new Error(statusPayload.error ?? "Analysis job failed");
+          }
+
+          if (statusPayload.status === "completed") {
+            setAnalysisStepIndex(analysisSteps.length - 1);
+            done = true;
+          }
+        }
+
+        await loadAnalysis(workspace.id, selectedRepo.id);
+        await refreshMetrics();
       } finally {
-        await wait(300);
+        await wait(350);
         setIsAnalyzing(false);
-        if (withModal) setAnalysisModalOpen(false);
+        setAnalysisModalOpen(false);
       }
     },
-    [isAnalyzing, refreshMetrics, selectedRepo?.fullName, selectedRepo?.name],
+    [isAnalyzing, selectedRepo?.id, workspace?.id, loadAnalysis, refreshMetrics],
   );
 
   const value = React.useMemo<WorkspaceContextValue>(
     () => ({
+      user,
+      workspace,
+      role,
       selectedRepo,
       setSelectedRepo,
       metrics,
@@ -193,9 +344,16 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       analysisStepIndex,
       analysisModalOpen,
       isAnalyzing,
+      latestAnalysis,
+      bootstrapped,
+      bootstrapSession,
+      refreshMetrics,
       runFullAnalysis,
     }),
     [
+      user,
+      workspace,
+      role,
       selectedRepo,
       setSelectedRepo,
       metrics,
@@ -203,6 +361,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       analysisStepIndex,
       analysisModalOpen,
       isAnalyzing,
+      latestAnalysis,
+      bootstrapped,
+      bootstrapSession,
+      refreshMetrics,
       runFullAnalysis,
     ],
   );
@@ -217,3 +379,6 @@ export function useWorkspace() {
   }
   return context;
 }
+
+export type { RepoContext };
+export { formatRepo };

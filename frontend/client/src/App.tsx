@@ -53,20 +53,37 @@ function PrivateRoutes() {
 
 function AppRouter() {
   const [location, navigate] = useLocation();
-  const { selectedRepo } = useWorkspace();
+  const { bootstrapped, workspace, selectedRepo } = useWorkspace();
 
   const isPublicRoute = location === "/" || location === "/auth";
   const isRepoConnectRoute = location === "/connect-repository";
 
   React.useEffect(() => {
-    if (!isPublicRoute && !isRepoConnectRoute && !selectedRepo) {
+    if (!bootstrapped) {
+      return;
+    }
+
+    if (!workspace && !isPublicRoute) {
+      navigate("/auth");
+      return;
+    }
+
+    if (workspace && !isPublicRoute && !isRepoConnectRoute && !selectedRepo) {
       navigate("/connect-repository");
     }
-  }, [isPublicRoute, isRepoConnectRoute, selectedRepo, navigate]);
+  }, [bootstrapped, workspace, isPublicRoute, isRepoConnectRoute, selectedRepo, navigate]);
+
+  if (!bootstrapped) {
+    return null;
+  }
 
   if (location === "/") return <LandingPage />;
   if (location === "/auth") return <AuthPage />;
   if (location === "/connect-repository") return <ConnectRepositoryPage />;
+
+  if (!workspace) {
+    return <AuthPage />;
+  }
 
   if (!selectedRepo) {
     return <ConnectRepositoryPage />;

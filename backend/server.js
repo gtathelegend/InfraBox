@@ -8,6 +8,7 @@ const userRoutes = require("./src/routes/userRoutes");
 const resourceRoutes = require("./src/routes/resourceRoutes");
 const repoConnectorRoutes = require("./src/routes/repoConnectorRoutes");
 const cloudIntegrationRoutes = require("./src/routes/cloudIntegrationRoutes");
+const repositoryAnalysisRoutes = require("./src/routes/repositoryAnalysisRoutes");
 const repositoryAnalyzerRoutes = require("./src/routes/repositoryAnalyzerRoutes");
 const pipelineParserRoutes = require("./src/routes/pipelineParserRoutes");
 const sandboxSimulationRoutes = require("./src/routes/sandboxSimulationRoutes");
@@ -21,6 +22,7 @@ const deploymentManagerRoutes = require("./src/routes/deploymentManagerRoutes");
 const monitoringRoutes = require("./src/routes/monitoringRoutes");
 const healingRoutes = require("./src/routes/healingRoutes");
 const dashboardRoutes = require("./src/routes/dashboardRoutes");
+const { startAnalysisWorker } = require("./src/workers/analysisWorker");
 const { startMonitoringCollectors } = require("./src/services/monitoring/monitoringService");
 
 const app = express();
@@ -40,6 +42,7 @@ app.use("/api/workspaces", workspaceRoutes);
 app.use("/api/me", userRoutes);
 app.use("/api/workspaces/:workspaceId", resourceRoutes);
 app.use("/api/repos", repoConnectorRoutes);
+app.use("/api/repository", repositoryAnalysisRoutes);
 app.use("/api/cloud", cloudIntegrationRoutes);
 app.use("/api/analysis", repositoryAnalyzerRoutes);
 app.use("/api/pipeline", pipelineParserRoutes);
@@ -87,6 +90,7 @@ async function start() {
 
     // Start periodic observability collectors (every 30s)
     startMonitoringCollectors();
+    startAnalysisWorker();
 
     app.listen(PORT, () => {
       console.log(`✓ InfraBox API server listening on http://localhost:${PORT}`);

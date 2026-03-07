@@ -1,116 +1,126 @@
 import { motion } from "framer-motion";
-import { Chrome, Github, Lock, Mail } from "lucide-react";
+import { Github } from "lucide-react";
+import * as React from "react";
 import { useLocation } from "wouter";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { RippleButton } from "@/components/ui/ripple-button";
+import { useWorkspace } from "@/context/workspace-context";
 
 export default function AuthPage() {
   const [, navigate] = useLocation();
+  const { bootstrapSession } = useWorkspace();
+  const skipAuth = String(import.meta.env.VITE_SKIP_AUTH || "").toLowerCase() === "true";
+  const githubProfile = (import.meta.env.VITE_GITHUB_PROFILE as string | undefined)?.trim() || "gtathelegend";
+
+  const [error, setError] = React.useState<string | null>(null);
+  const [submitting, setSubmitting] = React.useState(true);
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    const run = async () => {
+      try {
+        if (skipAuth) {
+          const auth0Id = `dev-${githubProfile}`;
+          const email = `${githubProfile}@users.infrabox.local`;
+          await bootstrapSession(auth0Id, email);
+          navigate("/connect-repository");
+          return;
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        const authError = params.get("error");
+        const authErrorDescription = params.get("error_description");
+        const auth0Id = params.get("auth0Id");
+        const email = params.get("email");
+
+        if (authError) {
+          if (!mounted) return;
+          setError(authErrorDescription || authError);
+          setSubmitting(false);
+          return;
+        }
+
+        if (!auth0Id || !email) {
+          if (!mounted) return;
+          setSubmitting(false);
+          return;
+        }
+
+        await bootstrapSession(auth0Id, email);
+        navigate("/connect-repository");
+      } catch (err) {
+        if (!mounted) return;
+        const message = err instanceof Error ? err.message : "Authentication failed";
+        setError(message);
+        setSubmitting(false);
+      }
+    };
+
+    void run();
+
+    return () => {
+      mounted = false;
+    };
+  }, [bootstrapSession, githubProfile, navigate, skipAuth]);
+
+  const handleContinue = () => {
+    setSubmitting(true);
+    setError(null);
+    if (skipAuth) {
+      const auth0Id = `dev-${githubProfile}`;
+      const email = `${githubProfile}@users.infrabox.local`;
+      void bootstrapSession(auth0Id, email)
+        .then(() => navigate("/connect-repository"))
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : "Authentication failed");
+          setSubmitting(false);
+        });
+      return;
+    }
+
+    window.location.assign("/api/auth/github/login");
+  };
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-background">
       <div className="pointer-events-none absolute inset-0 floating-bg opacity-60" />
 
-      <div className="relative z-10 grid min-h-screen grid-cols-1 px-5 py-8 md:px-8 lg:grid-cols-2 lg:px-14">
-        <div className="hidden flex-col justify-between rounded-3xl border border-white/35 bg-white/35 p-10 backdrop-blur-xl lg:flex">
-          <div>
-            <p className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-              Infrabox Access
-            </p>
-            <h1 className="mt-6 text-4xl font-bold text-slate-900">
-              Predict. Protect. Deploy.
-            </h1>
-            <p className="mt-4 max-w-md text-sm text-slate-700">
-              Connect repositories, simulate infra behavior, and get confidence
-              scoring before each production rollout.
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            <div className="rounded-2xl bg-white/80 p-4">
-              <p className="text-xs uppercase tracking-[0.12em] text-slate-500">
-                Trusted by teams
+      <div className="relative z-10 flex min-h-screen items-center justify-center px-5 py-8 md:px-8">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md">
+          <Card className="glass-card rounded-3xl">
+            <CardHeader className="space-y-2 text-center">
+              <CardTitle className="text-2xl font-bold text-slate-900">Sign in with Auth0</CardTitle>
+              <p className="text-sm text-slate-600">
+                {skipAuth
+                  ? `Auth bypass is enabled. Loading public repositories from ${githubProfile}.`
+                  : "Continue with GitHub via Auth0. Your workspace is initialized automatically."}
               </p>
-              <p className="mt-2 text-sm text-slate-700">
-                Kubernetes, Vercel, AWS, and hybrid platforms.
-              </p>
-            </div>
-            <div className="rounded-2xl bg-white/80 p-4">
-              <p className="text-xs uppercase tracking-[0.12em] text-slate-500">
-                Today
-              </p>
-              <p className="mt-2 text-sm font-medium text-slate-800">
-                Deployment confidence: 82 / 100
-              </p>
-            </div>
-          </div>
-        </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <RippleButton
+                variant="outline"
+                className="h-11 w-full justify-start border-slate-300 bg-white"
+                onClick={handleContinue}
+                disabled={submitting}
+              >
+                <Github className="h-4 w-4" />
+                {submitting
+                  ? skipAuth
+                    ? "Initializing workspace..."
+                    : "Checking Auth0 session..."
+                  : skipAuth
+                    ? `Continue as ${githubProfile}`
+                    : "Continue with GitHub"}
+              </RippleButton>
 
-        <div className="flex items-center justify-center lg:justify-end">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="w-full max-w-md"
-          >
-            <Card className="glass-card rounded-3xl">
-              <CardHeader className="space-y-2 text-center">
-                <CardTitle className="text-2xl font-bold text-slate-900">
-                  Sign in to Infrabox
-                </CardTitle>
-                <p className="text-sm text-slate-600">
-                  Continue with OAuth or email login.
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <RippleButton
-                  variant="outline"
-                  className="h-11 w-full justify-start border-slate-300 bg-white"
-                >
-                  <Github className="h-4 w-4" />
-                  Sign in with GitHub
-                </RippleButton>
-                <RippleButton
-                  variant="outline"
-                  className="h-11 w-full justify-start border-slate-300 bg-white"
-                >
-                  <Chrome className="h-4 w-4" />
-                  Sign in with Google
-                </RippleButton>
-
-                <div className="relative py-1 text-center text-xs uppercase tracking-[0.12em] text-slate-400">
-                  <span className="bg-white px-2">or email login</span>
-                  <span className="absolute left-0 top-1/2 -z-10 h-px w-full -translate-y-1/2 bg-slate-200" />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <div className="relative">
-                    <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <Input id="email" placeholder="devops@company.com" className="pl-9" />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <div className="relative">
-                    <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <Input id="password" type="password" placeholder="Enter password" className="pl-9" />
-                  </div>
-                </div>
-
-                <RippleButton
-                  className="h-11 w-full bg-primary text-white hover:bg-primary/90"
-                  onClick={() => navigate("/connect-repository")}
-                  data-testid="continue-workspace-btn"
-                >
-                  Continue to Workspace
-                </RippleButton>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </div>
+              {error ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
+              ) : null}
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
     </div>
   );

@@ -3,11 +3,28 @@ import { api } from "@shared/routes";
 import { type CreateRepositoryRequest } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 
-export function useRepositories() {
+export function useRepositories(workspaceId?: number) {
   return useQuery({
-    queryKey: [api.repositories.list.path],
+    queryKey: [api.repositories.list.path, workspaceId],
+    enabled: Boolean(workspaceId),
     queryFn: async () => {
-      const res = await fetch(api.repositories.list.path, { credentials: "include" });
+      const authToken = typeof window !== "undefined" ? window.localStorage.getItem("auth_token") : null;
+      const authIdToken = typeof window !== "undefined" ? window.localStorage.getItem("auth_id_token") : null;
+      const githubUser =
+        typeof window !== "undefined" ? (import.meta.env.VITE_GITHUB_PROFILE as string | undefined) : undefined;
+
+      const query = new URLSearchParams({ workspaceId: String(workspaceId) });
+      if (githubUser && githubUser.trim()) {
+        query.set("githubUser", githubUser.trim());
+      }
+
+      const res = await fetch(`${api.repositories.list.path}?${query.toString()}`, {
+        credentials: "include",
+        headers: {
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          ...(authIdToken ? { "x-auth-token": authIdToken } : {}),
+        },
+      });
       if (!res.ok) throw new Error("Failed to fetch repositories");
       const data = await res.json();
       return api.repositories.list.responses[200].parse(data);

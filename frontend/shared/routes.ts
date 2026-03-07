@@ -1,11 +1,12 @@
 import { z } from 'zod';
-import { 
-  insertRepositorySchema, 
-  repositories, 
-  pipelines, 
-  incidents, 
+import {
+  createInfrastructureRequestSchema,
+  insertRepositorySchema,
+  incidents,
+  pipelines,
+  repositories,
   users,
-  workspaces
+  workspaces,
 } from './schema';
 
 export const errorSchemas = {
@@ -22,10 +23,23 @@ export const errorSchemas = {
 };
 
 export const api = {
+  me: {
+    get: {
+      method: 'GET' as const,
+      path: '/api/me' as const,
+      responses: {
+        200: z.object({
+          user: z.custom<typeof users.$inferSelect>(),
+          workspace: z.custom<typeof workspaces.$inferSelect>(),
+          role: z.string(),
+        }),
+      }
+    }
+  },
   users: {
     me: {
       method: 'GET' as const,
-      path: '/api/users/me' as const,
+      path: '/api/me' as const,
       responses: {
         200: z.custom<typeof users.$inferSelect>(),
       }
@@ -43,18 +57,32 @@ export const api = {
   repositories: {
     list: {
       method: 'GET' as const,
-      path: '/api/repositories' as const,
+      path: '/api/git/repos' as const,
       responses: {
         200: z.array(z.custom<typeof repositories.$inferSelect>()),
       },
     },
     connect: {
       method: 'POST' as const,
-      path: '/api/repositories' as const,
+      path: '/api/git/connect' as const,
       input: insertRepositorySchema,
       responses: {
         201: z.custom<typeof repositories.$inferSelect>(),
         400: errorSchemas.validation,
+      },
+    },
+    branches: {
+      method: 'GET' as const,
+      path: '/api/git/repos/:repoId/branches' as const,
+      responses: {
+        200: z.object({ branches: z.array(z.string()) }),
+      },
+    },
+    pipelines: {
+      method: 'GET' as const,
+      path: '/api/git/repos/:repoId/pipelines' as const,
+      responses: {
+        200: z.object({ stages: z.array(z.string()) }),
       },
     },
   },
@@ -92,15 +120,75 @@ export const api = {
       }
     }
   },
-  chat: {
-    send: {
+  infrastructure: {
+    config: {
       method: 'POST' as const,
-      path: '/api/chat' as const,
-      input: z.object({ message: z.string() }),
+      path: '/api/infrastructure/config' as const,
+      input: createInfrastructureRequestSchema,
       responses: {
-        200: z.object({ reply: z.string() }),
+        201: z.object({ configId: z.number(), workspaceId: z.number(), repoId: z.number() }),
+      },
+    },
+    compatibility: {
+      method: 'POST' as const,
+      path: '/api/infrastructure/compatibility' as const,
+      input: z.object({
+        workspaceId: z.coerce.number().int().positive(),
+        repoId: z.coerce.number().int().positive(),
+        analysisId: z.coerce.number().int().positive(),
+      }),
+      responses: {
+        200: z.object({
+          result: z.string(),
+          serverMemoryGb: z.number(),
+          predictedMemoryGb: z.number(),
+          serverCpuCores: z.number(),
+          predictedCpuCores: z.number(),
+          risks: z.array(z.string()),
+        }),
       }
-    }
+    },
+  },
+  analysis: {
+    run: {
+      method: 'POST' as const,
+      path: '/api/analysis/run' as const,
+      input: z.object({
+        workspaceId: z.coerce.number().int().positive(),
+        repoId: z.coerce.number().int().positive(),
+      }),
+      responses: {
+        202: z.object({ jobId: z.number(), status: z.string() }),
+      },
+    },
+    status: {
+      method: 'GET' as const,
+      path: '/api/analysis/jobs/:jobId' as const,
+      responses: {
+        200: z.object({
+          jobId: z.number(),
+          status: z.string(),
+          analysisId: z.number().nullable(),
+          error: z.string().nullable().optional(),
+        }),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/analysis' as const,
+      responses: {
+        200: z.any(),
+      },
+    },
+  },
+  dashboard: {
+    result: {
+      method: 'GET' as const,
+      path: '/api/dashboard/result' as const,
+      responses: {
+        200: z.any(),
+      },
+    },
   }
 };
 
