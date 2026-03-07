@@ -17,6 +17,7 @@ const autonomousAgentRoutes = require("./src/routes/autonomousAgentRoutes");
 const deploymentConfidenceRoutes = require("./src/routes/deploymentConfidenceRoutes");
 const predictiveIntelligenceRoutes = require("./src/routes/predictiveIntelligenceRoutes");
 const devopsAssistantRoutes = require("./src/routes/devopsAssistantRoutes");
+const deploymentManagerRoutes = require("./src/routes/deploymentManagerRoutes");
 
 const app = express();
 
@@ -39,6 +40,7 @@ app.use("/api/agent", autonomousAgentRoutes);
 app.use("/api/deployment", deploymentConfidenceRoutes);
 app.use("/api/intelligence", predictiveIntelligenceRoutes);
 app.use("/api/assistant", devopsAssistantRoutes);
+app.use("/api/deploy", deploymentManagerRoutes);
 
 // ─── Health Check ───────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
