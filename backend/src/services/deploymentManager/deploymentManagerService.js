@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { exec } = require("child_process");
+const { EventEmitter } = require("events");
 const path = require("path");
 const Repository = require("../../models/Repository");
 const Deployment = require("../../models/Deployment");
@@ -28,6 +29,7 @@ const {
 } = require("./adapters/edgeAdapter");
 
 const SUPPORTED_TARGETS = ["vercel", "vultr", "kubernetes", "edge"];
+const deploymentEvents = new EventEmitter();
 
 function sanitizeTag(value) {
   return String(value || "latest")
@@ -217,23 +219,88 @@ async function runDeployment({ repositoryId, targetEnvironment, triggeredBy, opt
   const registry = resolveRegistryConfig(repository.name);
 
   const deployment = await Deployment.create({
+    repositoryId: repository._id,
     version: registry.versionTag,
     environment: "production",
-    status: "in_progress",
+    targetEnvironment: target,
+    status: "pending",
     workspaceId: repository.workspaceId,
     createdBy: triggeredBy,
+    startedAt: new Date(),
+    logs: [
+      {
+        event: "deployment_created",
+        message: `Deployment initialized for ${repository.name}`,
+        level: "info",
+        details: {
+          repositoryId: String(repository._id),
+          targetEnvironment: target,
+          image: registry.fullImageName,
+        },
+      },
+    ],
   });
 
   const timeline = [];
   let deploymentUrl = null;
   let providerMetadata = null;
 
+  async function appendLog(event, message, level = "info", details = {}) {
+    deployment.logs.push({
+      timestamp: new Date(),
+      event,
+      message,
+      level,
+      details,
+    });
+    await deployment.save();
+  }
+
+  async function updateStatus(status) {
+    deployment.status = status;
+    await deployment.save();
+  }
+
   try {
+    await updateStatus("building");
+    deploymentEvents.emit("build_started", {
+      deploymentId: String(deployment._id),
+      workspaceId: String(repository.workspaceId),
+      repositoryId: String(repository._id),
+      targetEnvironment: target,
+      image: registry.fullImageName,
+      timestamp: new Date().toISOString(),
+    });
+    await appendLog("build_started", `Building container image ${registry.fullImageName}`);
+
     const buildResult = await buildContainerImage({ repository, imageName: registry.fullImageName });
     timeline.push(buildResult);
+    deploymentEvents.emit("build_completed", {
+      deploymentId: String(deployment._id),
+      workspaceId: String(repository.workspaceId),
+      repositoryId: String(repository._id),
+      image: registry.fullImageName,
+      timestamp: new Date().toISOString(),
+    });
+    await appendLog("build_completed", "Container build completed", "info", {
+      output: String(buildResult.output || "").slice(-8000),
+    });
 
     const pushResult = await pushContainerImage({ imageName: registry.fullImageName });
     timeline.push(pushResult);
+    await appendLog("image_push_completed", "Container image pushed to registry", "info", {
+      output: String(pushResult.output || "").slice(-8000),
+    });
+
+    await updateStatus("deploying");
+    deploymentEvents.emit("deploy_started", {
+      deploymentId: String(deployment._id),
+      workspaceId: String(repository.workspaceId),
+      repositoryId: String(repository._id),
+      targetEnvironment: target,
+      timestamp: new Date().toISOString(),
+    });
+    await appendLog("deploy_started", `Deploying service to ${target}`);
 
     const deployed = await deployService({
       repository,
@@ -244,6 +311,8 @@ async function runDeployment({ repositoryId, targetEnvironment, triggeredBy, opt
 
     deploymentUrl = deployed.deploymentUrl;
     providerMetadata = deployed.metadata;
+    deployment.deploymentUrl = deploymentUrl;
+    await deployment.save();
 
     timeline.push({
       step: "deploy_service",
@@ -251,6 +320,19 @@ async function runDeployment({ repositoryId, targetEnvironment, triggeredBy, opt
       environment: target,
       deploymentUrl,
       metadata: providerMetadata,
+    });
+
+    deploymentEvents.emit("deploy_completed", {
+      deploymentId: String(deployment._id),
+      workspaceId: String(repository.workspaceId),
+      repositoryId: String(repository._id),
+      deploymentUrl,
+      targetEnvironment: target,
+      timestamp: new Date().toISOString(),
+    });
+    await appendLog("deploy_completed", "Service deployment stage completed", "info", {
+      deploymentUrl,
+      targetEnvironment: target,
     });
 
     const health = await verifyHealth({
@@ -265,6 +347,17 @@ async function runDeployment({ repositoryId, targetEnvironment, triggeredBy, opt
       health,
     });
 
+    await appendLog(
+      "health_check_completed",
+      health.healthy ? "Deployment health verification passed" : "Deployment health verification failed",
+      health.healthy ? "info" : "warn",
+      {
+        httpStatus: health.httpStatus,
+        readiness: health.readiness,
+        logs: String(health.logs || "").slice(-8000),
+      }
+    );
+
     if (!health.healthy) {
       const rollback = await rollbackDeployment({
         targetEnvironment: target,
@@ -273,7 +366,19 @@ async function runDeployment({ repositoryId, targetEnvironment, triggeredBy, opt
       });
       timeline.push({ step: "rollback", success: rollback.rolledBack, rollback });
 
+      deploymentEvents.emit("deploy_failed", {
+        deploymentId: String(deployment._id),
+        workspaceId: String(repository.workspaceId),
+        repositoryId: String(repository._id),
+        reason: "Health check failed",
+        timestamp: new Date().toISOString(),
+      });
+      await appendLog("deploy_failed", "Deployment failed health checks; rollback triggered", "error", {
+        rollback,
+      });
+
       deployment.status = rollback.rolledBack ? "rolled_back" : "failed";
+      deployment.completedAt = new Date();
       await deployment.save();
 
       return {
@@ -284,12 +389,14 @@ async function runDeployment({ repositoryId, targetEnvironment, triggeredBy, opt
       };
     }
 
-    deployment.status = "succeeded";
+    deployment.status = "running";
+    deployment.completedAt = new Date();
     await deployment.save();
+    await appendLog("deployment_running", "Deployment completed and service is running");
 
     return {
       deploymentId: String(deployment._id),
-      deploymentStatus: "succeeded",
+      deploymentStatus: "running",
       deploymentUrl,
       image: registry.fullImageName,
       targetEnvironment: target,
@@ -298,7 +405,18 @@ async function runDeployment({ repositoryId, targetEnvironment, triggeredBy, opt
     };
   } catch (err) {
     deployment.status = "failed";
+    deployment.completedAt = new Date();
     await deployment.save();
+    await appendLog("deploy_failed", err.message || "Deployment workflow failed", "error", {
+      stack: err.stack,
+    });
+    deploymentEvents.emit("deploy_failed", {
+      deploymentId: String(deployment._id),
+      workspaceId: String(repository.workspaceId),
+      repositoryId: String(repository._id),
+      reason: err.message,
+      timestamp: new Date().toISOString(),
+    });
 
     timeline.push({
       step: "error",
@@ -314,7 +432,40 @@ async function runDeployment({ repositoryId, targetEnvironment, triggeredBy, opt
   }
 }
 
+async function getDeploymentHistory({ workspaceId, repositoryId = null, limit = 20 }) {
+  const query = { workspaceId };
+  if (repositoryId) query.repositoryId = repositoryId;
+
+  const deployments = await Deployment.find(query)
+    .sort({ startedAt: -1 })
+    .limit(Math.min(Math.max(Number(limit) || 20, 1), 100))
+    .lean();
+
+  return deployments;
+}
+
+async function getDeploymentLogs(deploymentId) {
+  const deployment = await Deployment.findById(deploymentId).lean();
+  if (!deployment) {
+    const err = new Error("Deployment not found");
+    err.status = 404;
+    throw err;
+  }
+
+  return {
+    deploymentId: String(deployment._id),
+    repositoryId: deployment.repositoryId,
+    status: deployment.status,
+    startedAt: deployment.startedAt,
+    completedAt: deployment.completedAt,
+    logs: deployment.logs || [],
+  };
+}
+
 module.exports = {
   SUPPORTED_TARGETS,
+  deploymentEvents,
   runDeployment,
+  getDeploymentHistory,
+  getDeploymentLogs,
 };
