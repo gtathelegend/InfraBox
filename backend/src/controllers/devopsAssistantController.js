@@ -68,6 +68,8 @@ async function queryAssistant(req, res) {
       message: "Assistant query processed",
       answer: assistantResponse.answer,
       detectedIntent: assistantResponse.detectedIntent,
+      intentConfidence: assistantResponse.intentConfidence,
+      parsedResponse: assistantResponse.parsedResponse,
       supportingDataSources: assistantResponse.supportingDataSources,
       supportingData: assistantResponse.supportingData,
       conversationId,

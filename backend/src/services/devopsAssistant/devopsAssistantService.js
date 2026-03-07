@@ -7,6 +7,7 @@ const {
   buildInsightSummary,
 } = require("./devopsQueryRoutingService");
 const { classifyIntent, detectIntent } = require("./intentDetectionService");
+const { buildPrompt, parseLLMResponse } = require("./promptBuilderService");
 
 const openaiApiKey = process.env.OPENAI_API_KEY;
 
@@ -19,60 +20,7 @@ if (openaiApiKey) {
   openai = new OpenAIApi(configuration);
 }
 
-function buildSystemPrompt(intent, knowledge, contextSummary, keyMetrics, insightSummary) {
-  let systemPrompt = `You are a DevOps expert assistant for the Infrabox platform. You provide clear, actionable insights about infrastructure, deployments, pipelines, and cloud systems.
-
-Your approach:
-1. Be concise but thorough
-2. Provide data-driven analysis
-3. Include metrics with actual values
-4. Suggest specific, actionable recommendations
-5. Highlight risks early and clearly
-
-CONTEXT SUMMARY:
-${contextSummary}
-
-KEY METRICS:
-${JSON.stringify(keyMetrics, null, 2)}
-
-INSIGHT SUMMARY:
-${JSON.stringify(insightSummary, null, 2)}
-
-DETAILED SYSTEM DATA:
-${JSON.stringify(knowledge, null, 2)}
-
-Intent detected: ${intent}
-
-For this query, focus on:
-${getIntentGuidance(intent)}
-
-Provide your response in a structured format when possible, with:
-1. Direct answer to the query
-2. Supporting metrics/evidence
-3. Actionable recommendations
-4. Risk assessment if relevant`;
-
-  return systemPrompt;
-}
-
-function getIntentGuidance(intent) {
-  const guidance = {
-    deployment_failure:
-      "- Root cause of recent deployment failures\n- Services affected\n- Risk mitigation steps",
-    performance_issue:
-      "- Performance bottlenecks\n- Latency and throughput issues\n- Scaling recommendations",
-    cost_optimization:
-      "- Cost drivers and waste\n- Optimization opportunities\n- Estimated savings",
-    pipeline_analysis:
-      "- Pipeline health and bottlenecks\n- Stage performance\n- Test and build optimization",
-    general_devops_question:
-      "- Overall system health\n- Key metrics\n- Areas needing attention",
-  };
-
-  return guidance[intent] || guidance.general_devops_question;
-}
-
-async function queryOpenAI(userQuery, systemPrompt) {
+async function queryOpenAI(systemPrompt, userPrompt) {
   if (!openai) {
     throw new Error("OpenAI API is not configured. Set OPENAI_API_KEY environment variable.");
   }
@@ -87,7 +35,7 @@ async function queryOpenAI(userQuery, systemPrompt) {
         },
         {
           role: "user",
-          content: userQuery,
+          content: userPrompt,
         },
       ],
       temperature: 0.7,
@@ -126,11 +74,19 @@ async function processAssistantQuery({
   const keyMetrics = extractKeyMetrics(knowledge);
   const insightSummary = buildInsightSummary(knowledge);
 
-  // Step 4: Build enhanced system prompt with aggregated knowledge
-  const enhancedPrompt = buildSystemPrompt(detectedIntent, knowledge, contextSummary, keyMetrics, insightSummary);
+  // Step 4: Build structured prompts
+  const prompt = buildPrompt({
+    userQuestion: query,
+    detectedIntent,
+    contextSummary,
+    keyMetrics,
+    insightSummary,
+    systemData: knowledge,
+  });
 
   // Step 5: Query OpenAI
-  const answer = await queryOpenAI(query, enhancedPrompt);
+  const answer = await queryOpenAI(prompt.systemPrompt, prompt.userPrompt);
+  const parsedResponse = parseLLMResponse(answer, prompt.template);
 
   // Step 6: Return comprehensive response
   return {
@@ -143,6 +99,8 @@ async function processAssistantQuery({
     contextSummary,
     keyMetrics,
     insightSummary,
+    parsedResponse,
+    promptTemplate: prompt.template,
   };
 }
 
