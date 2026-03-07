@@ -1,4 +1,10 @@
-import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import {
+  MutationCache,
+  QueryCache,
+  QueryClient,
+  QueryFunction,
+} from "@tanstack/react-query";
+import { pushApiError } from "@services/apiClientState";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -42,16 +48,37 @@ export const getQueryFn: <T>(options: {
   };
 
 export const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error) => {
+      pushApiError({
+        message: (error as Error)?.message || "Failed to fetch data",
+      });
+    },
+  }),
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      pushApiError({
+        message: (error as Error)?.message || "Failed to submit request",
+      });
+    },
+  }),
   defaultOptions: {
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
       staleTime: Infinity,
-      retry: false,
+      retry: (failureCount, error) => {
+        if (failureCount >= 2) return false;
+        const message = String((error as Error)?.message || "");
+        if (message.includes("401")) return false;
+        return true;
+      },
+      retryDelay: (attemptIndex) => Math.min(1000 * (attemptIndex + 1), 3000),
     },
     mutations: {
-      retry: false,
+      retry: 1,
+      retryDelay: 1000,
     },
   },
 });

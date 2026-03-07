@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Route, Switch, useLocation } from "wouter";
 
 import { InfraboxShell } from "@/components/layout/infrabox-shell";
+import GlobalApiFeedback from "@/components/GlobalApiFeedback";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WorkspaceProvider, useWorkspace } from "@/context/workspace-context";
@@ -12,7 +13,7 @@ import AssistantPage from "@/pages/assistant";
 import AuthPage from "@/pages/auth";
 import ConnectRepositoryPage from "@/pages/connect-repository";
 import CostInsightsPage from "@/pages/cost-insights";
-import DashboardPage from "@/pages/dashboard";
+import DashboardPage from "@/pages/dashboard.tsx";
 import DeploymentsPage from "@/pages/deployments";
 import LandingPage from "@/pages/landing";
 import MonitoringPage from "@/pages/monitoring";
@@ -82,6 +83,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
+        <GlobalApiFeedback />
         <WorkspaceProvider>
           <AppRouter />
         </WorkspaceProvider>
