@@ -11,6 +11,8 @@ const cloudIntegrationRoutes = require("./src/routes/cloudIntegrationRoutes");
 const repositoryAnalyzerRoutes = require("./src/routes/repositoryAnalyzerRoutes");
 const pipelineParserRoutes = require("./src/routes/pipelineParserRoutes");
 const sandboxSimulationRoutes = require("./src/routes/sandboxSimulationRoutes");
+const digitalTwinRoutes = require("./src/routes/digitalTwinRoutes");
+const failurePredictionRoutes = require("./src/routes/failurePredictionRoutes");
 
 const app = express();
 
@@ -27,6 +29,8 @@ app.use("/api/cloud", cloudIntegrationRoutes);
 app.use("/api/analysis", repositoryAnalyzerRoutes);
 app.use("/api/pipeline", pipelineParserRoutes);
 app.use("/api/simulation", sandboxSimulationRoutes);
+app.use("/api/twin", digitalTwinRoutes);
+app.use("/api/predict", failurePredictionRoutes);
 
 // ─── Health Check ───────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
