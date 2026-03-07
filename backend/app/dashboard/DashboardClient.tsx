@@ -142,6 +142,12 @@ export default function DashboardClient() {
           </div>
 
           <div className="flex items-center gap-4">
+            <a
+              href="/pipeline"
+              className="text-sm text-cyan-300 hover:text-cyan-200 transition px-3 py-1.5 rounded-lg border border-cyan-400/30 hover:bg-cyan-500/10"
+            >
+              Pipeline Visualizer
+            </a>
             <div className="flex items-center gap-3 bg-white/5 rounded-full pl-3 pr-1 py-1">
               <span className="text-sm text-gray-300 hidden sm:inline">
                 {user.name}
