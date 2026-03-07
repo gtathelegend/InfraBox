@@ -1,55 +1,56 @@
 require("dotenv").config({ path: ".env.local" });
+require("dotenv").config({ path: ".env" }); // fallback — won't overwrite .env.local values
 const express = require("express");
-const { expressjwt: jwt } = require("express-jwt");
-const jwksRsa = require("jwks-rsa");
+const mongoose = require("mongoose");
+const cors = require("cors");
+const workspaceRoutes = require("./src/routes/workspaceRoutes");
 
 const app = express();
+
+// ─── Core Middleware ────────────────────────────────────────────────
+app.use(cors());
 app.use(express.json());
 
-// Auth middleware to enforce JWT validation
-const checkJwt = jwt({
-  // Dynamically provide a signing key based on the 'kid' in the token header
-  // and the signing keys provided by the JWKS endpoint
-  secret: jwksRsa.expressJwtSecret({
-    cache: true,
-    rateLimit: true,
-    jwksRequestsPerMinute: 5,
-    jwksUri: `${process.env.AUTH0_ISSUER_BASE_URL}/.well-known/jwks.json`
-  }),
+// ─── Routes ─────────────────────────────────────────────────────────
+app.use("/api/workspaces", workspaceRoutes);
 
-  // Verify the audience and the Auth0 issuer
-  // Usually this would be defined in environment variables as your API Identifier
-  audience: process.env.AUTH0_AUDIENCE || "https://infrabox-api",
-  issuer: `${process.env.AUTH0_ISSUER_BASE_URL}/`,
-  algorithms: ["RS256"]
+// ─── Health Check ───────────────────────────────────────────────────
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Example protected API route: GET /api/workspaces
-// Only authenticated users should access it
-app.get("/api/workspaces", checkJwt, (req, res) => {
-  res.json({
-    message: "You are authorized!",
-    workspaces: [
-      { id: "wksp_1", name: "Production Gateway", region: "us-east-1" },
-      { id: "wksp_2", name: "Staging Cluster", region: "eu-west-1" }
-    ]
+// ─── Global Error Handler ───────────────────────────────────────────
+app.use((err, _req, res, _next) => {
+  if (err.name === "UnauthorizedError") {
+    return res.status(401).json({
+      error: "unauthorized",
+      message: "Authorization token is missing or invalid",
+    });
+  }
+
+  console.error("Unhandled error:", err);
+  return res.status(500).json({
+    error: "server_error",
+    message: "An unexpected error occurred",
   });
 });
 
-// Global error handler to catch and reject unauthorized requests gracefully
-app.use((err, req, res, next) => {
-  if (err.name === 'UnauthorizedError') {
-    res.status(401).json({
-      error: "unauthorized",
-      message: "Authorization token is missing or invalid"
-    });
-  } else {
-    next(err);
-  }
-});
+// ─── MongoDB Connection & Server Start ──────────────────────────────
+const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/infrabox";
+const PORT = process.env.PORT || 3001;
 
-const port = process.env.PORT || 3001;
-app.listen(port, () => {
-  console.log(`Backend Express server listening on http://localhost:${port}`);
-  console.log('Ensure process.env.AUTH0_ISSUER_BASE_URL is set matching your Auth0 tenant.');
-});
+async function start() {
+  try {
+    await mongoose.connect(MONGO_URI);
+    console.log(`✓ Connected to MongoDB at ${MONGO_URI}`);
+
+    app.listen(PORT, () => {
+      console.log(`✓ InfraBox API server listening on http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error("✗ Failed to start server:", err);
+    process.exit(1);
+  }
+}
+
+start();
