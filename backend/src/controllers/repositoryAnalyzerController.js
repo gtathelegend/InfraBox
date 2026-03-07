@@ -9,6 +9,9 @@ const {
 const {
   generateDependencyGraph,
 } = require("../services/repositoryAnalyzer/dependencyGraphBuilderService");
+const {
+  runTechnicalDebtScan,
+} = require("../services/repositoryAnalyzer/technicalDebtDetectorService");
 
 function enforceAction(role, action) {
   if (!hasPermission(role, action)) {
@@ -124,8 +127,41 @@ async function getDependencyGraph(req, res) {
   }
 }
 
+async function scanTechnicalDebt(req, res) {
+  try {
+    const { repositoryId } = req.body;
+
+    if (!repositoryId) {
+      return res.status(400).json({
+        error: "validation_error",
+        message: "repositoryId is required",
+      });
+    }
+
+    const userId = req.auth.sub;
+    await ensureRepositoryAccess(repositoryId, userId);
+
+    const result = await runTechnicalDebtScan({
+      repositoryId,
+      userId,
+    });
+
+    return res.status(200).json({
+      message: "Technical debt scan completed successfully",
+      repositoryId,
+      debtScore: result.debtScore,
+      riskFactors: result.riskFactors,
+      recommendations: result.recommendations,
+      details: result.details,
+    });
+  } catch (err) {
+    return handleError(res, err, "Failed to run technical debt scan");
+  }
+}
+
 module.exports = {
   runAnalysis,
   getAnalysis,
   getDependencyGraph,
+  scanTechnicalDebt,
 };

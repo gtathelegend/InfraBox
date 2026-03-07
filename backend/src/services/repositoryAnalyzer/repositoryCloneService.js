@@ -43,7 +43,7 @@ async function resolveRepository(repositoryId) {
   return repository;
 }
 
-async function cloneRepositoryToTempWorkspace(repositoryId) {
+async function cloneRepositoryToTempWorkspace(repositoryId, options = {}) {
   const repository = await resolveRepository(repositoryId);
   const repoUrl = repository.repoUrl || repository.url;
 
@@ -71,7 +71,13 @@ async function cloneRepositoryToTempWorkspace(repositoryId) {
   }
 
   try {
-    await execFileAsync("git", ["clone", "--depth", "1", cloneUrl, cloneDir], {
+    const cloneArgs = ["clone"];
+    if (!options.fullHistory) {
+      cloneArgs.push("--depth", String(options.depth || 1));
+    }
+    cloneArgs.push(cloneUrl, cloneDir);
+
+    await execFileAsync("git", cloneArgs, {
       windowsHide: true,
       timeout: 120000,
       maxBuffer: 1024 * 1024 * 5,
