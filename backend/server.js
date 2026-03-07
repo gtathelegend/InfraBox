@@ -18,6 +18,8 @@ const deploymentConfidenceRoutes = require("./src/routes/deploymentConfidenceRou
 const predictiveIntelligenceRoutes = require("./src/routes/predictiveIntelligenceRoutes");
 const devopsAssistantRoutes = require("./src/routes/devopsAssistantRoutes");
 const deploymentManagerRoutes = require("./src/routes/deploymentManagerRoutes");
+const monitoringRoutes = require("./src/routes/monitoringRoutes");
+const { startMonitoringCollectors } = require("./src/services/monitoring/monitoringService");
 
 const app = express();
 
@@ -41,6 +43,7 @@ app.use("/api/deployment", deploymentConfidenceRoutes);
 app.use("/api/intelligence", predictiveIntelligenceRoutes);
 app.use("/api/assistant", devopsAssistantRoutes);
 app.use("/api/deploy", deploymentManagerRoutes);
+app.use("/api/monitoring", monitoringRoutes);
 
 // ─── Health Check ───────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
@@ -71,6 +74,9 @@ async function start() {
   try {
     await mongoose.connect(MONGO_URI);
     console.log(`✓ Connected to MongoDB at ${MONGO_URI}`);
+
+    // Start periodic observability collectors (every 30s)
+    startMonitoringCollectors();
 
     app.listen(PORT, () => {
       console.log(`✓ InfraBox API server listening on http://localhost:${PORT}`);
