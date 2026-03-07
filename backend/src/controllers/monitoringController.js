@@ -2,6 +2,7 @@
 const { hasPermission } = require("../middleware/rbac");
 const { requireWorkspaceMember } = require("../services/repoConnector/workspaceAccessService");
 const { getLatestMonitoringMetrics } = require("../services/monitoring/monitoringService");
+const { runAnomalyDetection } = require("../services/monitoring/anomalyDetectionService");
 
 function enforceAction(role, action) {
   if (!hasPermission(role, action)) {
@@ -51,6 +52,43 @@ async function getMonitoringMetrics(req, res) {
   }
 }
 
+async function analyzeMonitoringAnomalies(req, res) {
+  try {
+    const { workspaceId, serviceId, thresholds } = req.body;
+
+    if (!workspaceId) {
+      return res.status(400).json({
+        error: "validation_error",
+        message: "workspaceId is required",
+      });
+    }
+
+    const userId = req.auth.sub;
+    const { role } = await requireWorkspaceMember(String(workspaceId), userId);
+    enforceAction(role, "view_dashboard");
+
+    const result = await runAnomalyDetection({
+      workspaceId,
+      serviceId,
+      thresholds: thresholds || {},
+    });
+
+    return res.status(200).json({
+      anomalyDetected: result.anomalyDetected,
+      affectedService: result.affectedService,
+      severity: result.severity,
+      impact: result.impact,
+      findings: result.findings,
+      latest: result.latest,
+      baseline: result.baseline,
+      thresholds: result.thresholds,
+    });
+  } catch (err) {
+    return handleError(res, err, "Failed to analyze monitoring anomalies");
+  }
+}
+
 module.exports = {
   getMonitoringMetrics,
+  analyzeMonitoringAnomalies,
 };

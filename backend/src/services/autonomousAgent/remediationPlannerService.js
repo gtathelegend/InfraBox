@@ -125,6 +125,92 @@ function selectAgentActions(context) {
     }
   }
 
+  if (context.detectionType === "anomaly_detection") {
+    const anomalyType = String(context.anomalyType || "").toLowerCase();
+    const severity = String(context.severity || "low").toLowerCase();
+    const serviceName = context.serviceId || context.serviceName || "unknown-service";
+
+    if (severity === "high" || severity === "critical") {
+      if (anomalyType.includes("memory")) {
+        actions.push({
+          agentType: "healing",
+          actionName: "clear_cache",
+          description: "Flush cache to reduce memory pressure",
+          priority: "high",
+          parameters: { serviceName },
+        });
+        actions.push({
+          agentType: "scaling",
+          actionName: "adjust_resources",
+          description: "Increase container memory allocation",
+          priority: "high",
+          parameters: { serviceName, targetMemory: "2048Mi" },
+        });
+      }
+
+      if (anomalyType.includes("cpu")) {
+        actions.push({
+          agentType: "scaling",
+          actionName: "increase_replicas",
+          description: "Scale replicas to distribute CPU load",
+          priority: severity === "critical" ? "critical" : "high",
+          parameters: { serviceName, currentReplicas: 2 },
+        });
+      }
+
+      if (anomalyType.includes("latency") || anomalyType.includes("traffic")) {
+        actions.push({
+          agentType: "healing",
+          actionName: "restart_container",
+          description: "Restart service instances to clear transient bottlenecks",
+          priority: "medium",
+          parameters: { serviceName },
+        });
+        actions.push({
+          agentType: "scaling",
+          actionName: "increase_replicas",
+          description: "Scale replicas for traffic/latency spikes",
+          priority: "high",
+          parameters: { serviceName, currentReplicas: 2 },
+        });
+      }
+
+      if (anomalyType.includes("error")) {
+        actions.push({
+          agentType: "healing",
+          actionName: "restart_container",
+          description: "Restart service to recover from error spike",
+          priority: "high",
+          parameters: { serviceName },
+        });
+      }
+
+      if (severity === "critical") {
+        actions.push({
+          agentType: "healing",
+          actionName: "rollback_deployment",
+          description: "Rollback deployment due to critical anomaly",
+          priority: "critical",
+          parameters: {
+            serviceName,
+            currentVersion: context.currentVersion || "unknown",
+            previousVersion: context.previousVersion || "stable",
+          },
+        });
+      }
+
+      if (!actions.length) {
+        actions.push({
+          agentType: "healing",
+          actionName: "restart_container",
+          description: "Generic restart action for high-severity anomaly",
+          priority: "high",
+          parameters: { serviceName },
+        });
+      }
+    }
+  }
+
   return actions;
 }
 
@@ -178,8 +264,17 @@ async function createRemediationPlan({
     throw err;
   }
 
+  const inferredType =
+    triggeredBy === "failure_prediction"
+      ? "failure_prediction"
+      : triggeredBy === "digital_twin"
+        ? "digital_twin"
+        : triggeredBy === "anomaly_detection"
+          ? "anomaly_detection"
+          : "manual";
+
   const context = {
-    detectionType: triggeredBy === "failure_prediction" ? "failure_prediction" : "digital_twin",
+    detectionType: triggerContext?.detectionType || inferredType,
     ...triggerContext,
   };
 

@@ -67,7 +67,7 @@ const RemediationPlanSchema = new mongoose.Schema(
     },
     triggeredBy: {
       type: String,
-      enum: ["failure_prediction", "digital_twin", "manual"],
+      enum: ["failure_prediction", "digital_twin", "anomaly_detection", "manual"],
       default: "manual",
     },
     triggerContext: {
