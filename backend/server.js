@@ -14,6 +14,7 @@ const sandboxSimulationRoutes = require("./src/routes/sandboxSimulationRoutes");
 const digitalTwinRoutes = require("./src/routes/digitalTwinRoutes");
 const failurePredictionRoutes = require("./src/routes/failurePredictionRoutes");
 const autonomousAgentRoutes = require("./src/routes/autonomousAgentRoutes");
+const deploymentConfidenceRoutes = require("./src/routes/deploymentConfidenceRoutes");
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use("/api/simulation", sandboxSimulationRoutes);
 app.use("/api/twin", digitalTwinRoutes);
 app.use("/api/predict", failurePredictionRoutes);
 app.use("/api/agent", autonomousAgentRoutes);
+app.use("/api/deployment", deploymentConfidenceRoutes);
 
 // ─── Health Check ───────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
