@@ -6,6 +6,10 @@ const {
   runSandboxSimulation,
   getSimulationResultsByRepository,
 } = require("../services/sandboxSimulation/sandboxSimulationEngineService");
+const {
+  analyzeInfrastructureBehavior,
+  resolveSimulationMetrics,
+} = require("../services/sandboxSimulation/infrastructureBehaviorAnalyzerService");
 
 function enforceAction(role, action) {
   if (!hasPermission(role, action)) {
@@ -86,7 +90,56 @@ async function getSimulationResults(req, res) {
   }
 }
 
+async function analyzeSimulation(req, res) {
+  try {
+    const {
+      simulationResultId,
+      repositoryId,
+      metrics,
+      containerLimit,
+      cpuThreshold,
+      latencyThreshold,
+      errorRateThreshold,
+    } = req.body;
+
+    const userId = req.auth.sub;
+
+    if (repositoryId) {
+      await ensureRepositoryAccess(repositoryId, userId, "view_dashboard");
+    }
+
+    const resolvedMetrics = await resolveSimulationMetrics({
+      simulationResultId,
+      repositoryId,
+      metrics,
+    });
+
+    if (!repositoryId && resolvedMetrics.repositoryId) {
+      await ensureRepositoryAccess(String(resolvedMetrics.repositoryId), userId, "view_dashboard");
+    }
+
+    const analysis = analyzeInfrastructureBehavior(resolvedMetrics, {
+      containerLimit,
+      cpuThreshold,
+      latencyThreshold,
+      errorRateThreshold,
+    });
+
+    return res.status(200).json({
+      message: "Simulation risk analysis completed",
+      riskLevel: analysis.riskLevel,
+      riskScore: analysis.riskScore,
+      detectedIssues: analysis.detectedIssues,
+      recommendations: analysis.recommendations,
+      analyzedMetrics: analysis.analyzedMetrics,
+    });
+  } catch (err) {
+    return handleError(res, err, "Failed to analyze simulation results");
+  }
+}
+
 module.exports = {
   runSimulation,
   getSimulationResults,
+  analyzeSimulation,
 };
