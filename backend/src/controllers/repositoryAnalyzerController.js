@@ -6,6 +6,9 @@ const {
   runRepositoryAnalysis,
   getRepositoryAnalysis,
 } = require("../services/repositoryAnalyzer/repositoryAnalyzerService");
+const {
+  generateDependencyGraph,
+} = require("../services/repositoryAnalyzer/dependencyGraphBuilderService");
 
 function enforceAction(role, action) {
   if (!hasPermission(role, action)) {
@@ -98,7 +101,31 @@ async function getAnalysis(req, res) {
   }
 }
 
+async function getDependencyGraph(req, res) {
+  try {
+    const { repoId } = req.params;
+    const userId = req.auth.sub;
+
+    await ensureRepositoryAccess(repoId, userId);
+
+    const graph = await generateDependencyGraph({
+      repositoryId: repoId,
+      userId,
+    });
+
+    return res.status(200).json({
+      message: "Dependency graph generated successfully",
+      repositoryId: repoId,
+      nodes: graph.nodes,
+      edges: graph.edges,
+    });
+  } catch (err) {
+    return handleError(res, err, "Failed to generate dependency graph");
+  }
+}
+
 module.exports = {
   runAnalysis,
   getAnalysis,
+  getDependencyGraph,
 };
