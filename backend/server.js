@@ -8,6 +8,7 @@ const userRoutes = require("./src/routes/userRoutes");
 const resourceRoutes = require("./src/routes/resourceRoutes");
 const repoConnectorRoutes = require("./src/routes/repoConnectorRoutes");
 const cloudIntegrationRoutes = require("./src/routes/cloudIntegrationRoutes");
+const repositoryAnalyzerRoutes = require("./src/routes/repositoryAnalyzerRoutes");
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.use("/api/me", userRoutes);
 app.use("/api/workspaces/:workspaceId", resourceRoutes);
 app.use("/api/repos", repoConnectorRoutes);
 app.use("/api/cloud", cloudIntegrationRoutes);
+app.use("/api/analysis", repositoryAnalyzerRoutes);
 
 // ─── Health Check ───────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
