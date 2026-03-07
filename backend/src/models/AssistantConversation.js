@@ -35,15 +35,18 @@ const AssistantConversationSchema = new mongoose.Schema(
     topic: {
       type: String,
       enum: [
-        "deployment_failures",
-        "performance",
+        "deployment_failure",
+        "performance_issue",
         "cost_optimization",
         "pipeline_analysis",
+        "general_devops_question",
+        // Backward-compatible values
+        "deployment_failures",
+        "performance",
         "general_infrastructure",
-        "security",
         "other",
       ],
-      default: "general_infrastructure",
+      default: "general_devops_question",
     },
     sessionStarted: {
       type: Date,

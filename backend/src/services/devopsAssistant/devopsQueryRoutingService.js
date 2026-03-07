@@ -10,11 +10,19 @@ const {
 
 // Intent-to-data-source mapping
 const INTENT_DATA_MAP = {
-  deployment_failures: ["deploymentStatus", "failureAnalysis", "pipelineInsights"],
-  performance: ["infrastructureHealth", "pipelineInsights", "failureAnalysis"],
+  deployment_failure: ["deploymentStatus", "failureAnalysis", "pipelineInsights"],
+  performance_issue: ["infrastructureHealth", "pipelineInsights", "failureAnalysis"],
   cost_optimization: ["costInsights", "infrastructureHealth"],
   pipeline_analysis: ["pipelineInsights", "failureAnalysis"],
-  security: ["deploymentStatus", "failureAnalysis"],
+  general_devops_question: [
+    "infrastructureHealth",
+    "deploymentStatus",
+    "pipelineInsights",
+    "costInsights",
+  ],
+  // Backward-compatible aliases
+  deployment_failures: ["deploymentStatus", "failureAnalysis", "pipelineInsights"],
+  performance: ["infrastructureHealth", "pipelineInsights", "failureAnalysis"],
   general_infrastructure: [
     "infrastructureHealth",
     "deploymentStatus",
@@ -26,7 +34,7 @@ const INTENT_DATA_MAP = {
 async function routeQuery({
   workspaceId,
   repositoryId = null,
-  detectedIntent = "general_infrastructure",
+  detectedIntent = "general_devops_question",
 } = {}) {
   if (!workspaceId) {
     const err = new Error("workspaceId is required");
@@ -35,11 +43,11 @@ async function routeQuery({
   }
 
   // Determine which data sources to query based on intent
-  const dataSources = INTENT_DATA_MAP[detectedIntent] || INTENT_DATA_MAP.general_infrastructure;
+  const dataSources = INTENT_DATA_MAP[detectedIntent] || INTENT_DATA_MAP.general_devops_question;
 
   // Check if we need comprehensive analysis
   const needsComprehensive =
-    detectedIntent === "general_infrastructure" || dataSources.length > 3;
+    detectedIntent === "general_devops_question" || dataSources.length > 3;
 
   if (needsComprehensive) {
     return await getComprehensiveAnalysis(workspaceId, repositoryId);

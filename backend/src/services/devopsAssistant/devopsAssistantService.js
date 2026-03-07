@@ -6,6 +6,7 @@ const {
   extractKeyMetrics,
   buildInsightSummary,
 } = require("./devopsQueryRoutingService");
+const { classifyIntent, detectIntent } = require("./intentDetectionService");
 
 const openaiApiKey = process.env.OPENAI_API_KEY;
 
@@ -16,48 +17,6 @@ if (openaiApiKey) {
     apiKey: openaiApiKey,
   });
   openai = new OpenAIApi(configuration);
-}
-
-// Intent detection patterns
-const INTENT_PATTERNS = {
-  deployment_failures: [
-    /deployment.*fail|fail.*deploy|why.*deploy.*fail|deploy.*not.*work|deployment.*error|deploy.*error/i,
-    /rollback|revert|failed.*release|release.*fail/i,
-  ],
-  performance: [
-    /latency|slow|response.*time|performance|lag|timeout|throughput/i,
-    /which.*service.*slow|bottleneck|bottlenecks|speed.*up|optimize.*performance/i,
-  ],
-  cost_optimization: [
-    /cost|expense|price|bill|budget|expensive|reduce.*cost|save.*money|cloud.*cost/i,
-    /how.*reduce.*cost|cheaper|cost.*optimization|waste.*money/i,
-  ],
-  pipeline_analysis: [
-    /pipeline|stage|build.*fail|ci\/cd|continuous.*integration|test.*fail/i,
-    /stages.*slow|which.*stage.*slow|build.*time|test.*time/i,
-  ],
-  security: [
-    /security|vulnerab|exploit|breach|scan|secure|encrypt|permission/i,
-    /threat|attack|malicious|risk.*security|security.*issue/i,
-  ],
-  general_infrastructure: [
-    /infrastructure|config|setup|resource|capacity|load|scale/i,
-    /how.*many|resource.*usage|cpu|memory|storage|network/i,
-  ],
-};
-
-function detectIntent(query) {
-  const lowerQuery = query.toLowerCase();
-
-  for (const [intent, patterns] of Object.entries(INTENT_PATTERNS)) {
-    for (const pattern of patterns) {
-      if (pattern.test(lowerQuery)) {
-        return intent;
-      }
-    }
-  }
-
-  return "general_infrastructure";
 }
 
 function buildSystemPrompt(intent, knowledge, contextSummary, keyMetrics, insightSummary) {
@@ -98,21 +57,19 @@ Provide your response in a structured format when possible, with:
 
 function getIntentGuidance(intent) {
   const guidance = {
-    deployment_failures:
+    deployment_failure:
       "- Root cause of recent deployment failures\n- Services affected\n- Risk mitigation steps",
-    performance:
+    performance_issue:
       "- Performance bottlenecks\n- Latency and throughput issues\n- Scaling recommendations",
     cost_optimization:
       "- Cost drivers and waste\n- Optimization opportunities\n- Estimated savings",
     pipeline_analysis:
       "- Pipeline health and bottlenecks\n- Stage performance\n- Test and build optimization",
-    security:
-      "- Security vulnerabilities\n- Risk assessment\n- Remediation steps",
-    general_infrastructure:
+    general_devops_question:
       "- Overall system health\n- Key metrics\n- Areas needing attention",
   };
 
-  return guidance[intent] || guidance.general_infrastructure;
+  return guidance[intent] || guidance.general_devops_question;
 }
 
 async function queryOpenAI(userQuery, systemPrompt) {
@@ -155,7 +112,8 @@ async function processAssistantQuery({
   }
 
   // Step 1: Detect intent
-  const detectedIntent = detectIntent(query);
+  const intentResult = classifyIntent(query);
+  const detectedIntent = intentResult.intent;
 
   // Step 2: Route query and retrieve relevant data using intelligent routing
   const knowledge = await routeQuery({
@@ -178,6 +136,8 @@ async function processAssistantQuery({
   return {
     answer,
     detectedIntent,
+    intentConfidence: intentResult.confidence,
+    intentScores: intentResult.scores,
     supportingDataSources: knowledge.dataSources || [],
     supportingData: knowledge,
     contextSummary,
