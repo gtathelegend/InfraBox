@@ -20,6 +20,7 @@ const devopsAssistantRoutes = require("./src/routes/devopsAssistantRoutes");
 const deploymentManagerRoutes = require("./src/routes/deploymentManagerRoutes");
 const monitoringRoutes = require("./src/routes/monitoringRoutes");
 const healingRoutes = require("./src/routes/healingRoutes");
+const dashboardRoutes = require("./src/routes/dashboardRoutes");
 const { startMonitoringCollectors } = require("./src/services/monitoring/monitoringService");
 
 const app = express();
@@ -46,6 +47,7 @@ app.use("/api/assistant", devopsAssistantRoutes);
 app.use("/api/deploy", deploymentManagerRoutes);
 app.use("/api/monitoring", monitoringRoutes);
 app.use("/api/healing", healingRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 // ─── Health Check ───────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
