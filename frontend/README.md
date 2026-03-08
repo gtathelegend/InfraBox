@@ -216,12 +216,14 @@ Frontend (`Vite`)
 - `VITE_AUTH0_DOMAIN`
 - `VITE_AUTH0_CLIENT_ID`
 - `VITE_AUTH0_AUDIENCE`
+- `VITE_API_BASE_URL` (recommended in production, e.g. `https://api.yourdomain.com`)
 
 Optional deploy/integration values
 - `GITHUB_CLIENT_ID`
 - `GITHUB_SECRET`
 - `AUTH0_CLIENT_SECRET`
 - `AUTH0_SECRET`
+- `API_BASE_URL` (for Vercel `api/[...path].js` proxy when frontend and backend are deployed separately)
 
 ---
 
