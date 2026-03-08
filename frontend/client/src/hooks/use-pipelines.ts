@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
 import { getAccessToken, getGitHubTokenFromStorage } from "@/lib/auth-token";
+import { buildApiUrl } from "@/lib/api-url";
 
 async function authHeaders(): Promise<Record<string, string>> {
   const token = await getAccessToken();
@@ -19,7 +20,8 @@ export function usePipelines() {
   return useQuery({
     queryKey: [api.pipelines.list.path],
     queryFn: async () => {
-      const res = await fetch(api.pipelines.list.path, {
+      const requestUrl = buildApiUrl(api.pipelines.list.path);
+      const res = await fetch(requestUrl, {
         credentials: "include",
         headers: await authHeaders(),
       });
@@ -35,7 +37,8 @@ export function usePipeline(id: string) {
     queryKey: [api.pipelines.get.path, id],
     queryFn: async () => {
       const url = buildUrl(api.pipelines.get.path, { id });
-      const res = await fetch(url, {
+      const requestUrl = buildApiUrl(url);
+      const res = await fetch(requestUrl, {
         credentials: "include",
         headers: await authHeaders(),
       });

@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
 import { useToast } from "@/hooks/use-toast";
 import { getAccessToken, getGitHubTokenFromStorage } from "@/lib/auth-token";
+import { buildApiUrl } from "@/lib/api-url";
 
 async function authHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
   const token = await getAccessToken();
@@ -20,7 +21,8 @@ export function useIncidents() {
   return useQuery({
     queryKey: [api.incidents.list.path],
     queryFn: async () => {
-      const res = await fetch(api.incidents.list.path, {
+      const requestUrl = buildApiUrl(api.incidents.list.path);
+      const res = await fetch(requestUrl, {
         credentials: "include",
         headers: await authHeaders(),
       });
@@ -38,7 +40,8 @@ export function useResolveIncident() {
   return useMutation({
     mutationFn: async (id: string) => {
       const url = buildUrl(api.incidents.resolve.path, { id });
-      const res = await fetch(url, {
+      const requestUrl = buildApiUrl(url);
+      const res = await fetch(requestUrl, {
         method: api.incidents.resolve.method,
         headers: await authHeaders(),
         credentials: "include",

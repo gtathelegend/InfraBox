@@ -1,5 +1,6 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { getAccessToken, getGitHubTokenFromStorage } from "@/lib/auth-token";
+import { buildApiUrl } from "@/lib/api-url";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -13,6 +14,7 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  const requestUrl = buildApiUrl(url);
   const token = await getAccessToken();
   const headers: Record<string, string> = data
     ? { "Content-Type": "application/json" }
@@ -26,7 +28,7 @@ export async function apiRequest(
     headers["x-github-token"] = githubToken;
   }
 
-  const res = await fetch(url, {
+  const res = await fetch(requestUrl, {
     method,
     headers,
     body: data ? JSON.stringify(data) : undefined,
@@ -43,6 +45,7 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
+    const requestUrl = buildApiUrl(queryKey.join("/") as string);
     const token = await getAccessToken();
     const headers: Record<string, string> = {};
     if (token) {
@@ -53,7 +56,7 @@ export const getQueryFn: <T>(options: {
       headers["x-github-token"] = githubToken;
     }
 
-    const res = await fetch(queryKey.join("/") as string, {
+    const res = await fetch(requestUrl, {
       credentials: "include",
       headers,
     });

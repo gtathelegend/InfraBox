@@ -1,13 +1,15 @@
 import { useMutation } from "@tanstack/react-query";
 import { api } from "@shared/routes";
 import { getAccessToken, getGitHubTokenFromStorage } from "@/lib/auth-token";
+import { buildApiUrl } from "@/lib/api-url";
 
 export function useChat() {
   return useMutation({
     mutationFn: async (message: string) => {
       const token = await getAccessToken();
       const githubToken = getGitHubTokenFromStorage();
-      const res = await fetch(api.chat.send.path, {
+      const requestUrl = buildApiUrl(api.chat.send.path);
+      const res = await fetch(requestUrl, {
         method: api.chat.send.method,
         headers: {
           "Content-Type": "application/json",

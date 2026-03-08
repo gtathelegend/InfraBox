@@ -3,6 +3,7 @@ import { api } from "@shared/routes";
 import { type ConnectRepositoryRequest } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { getAccessToken, getGitHubTokenFromStorage } from "@/lib/auth-token";
+import { buildApiUrl } from "@/lib/api-url";
 
 async function authHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
   const token = await getAccessToken();
@@ -21,7 +22,8 @@ export function useRepositories() {
   return useQuery({
     queryKey: [api.repositories.list.path],
     queryFn: async () => {
-      const res = await fetch(api.repositories.list.path, {
+      const requestUrl = buildApiUrl(api.repositories.list.path);
+      const res = await fetch(requestUrl, {
         credentials: "include",
         headers: await authHeaders(),
       });
@@ -38,7 +40,8 @@ export function useConnectRepository() {
 
   return useMutation({
     mutationFn: async (data: ConnectRepositoryRequest) => {
-      const res = await fetch(api.repositories.connect.path, {
+      const requestUrl = buildApiUrl(api.repositories.connect.path);
+      const res = await fetch(requestUrl, {
         method: api.repositories.connect.method,
         headers: await authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(data),
